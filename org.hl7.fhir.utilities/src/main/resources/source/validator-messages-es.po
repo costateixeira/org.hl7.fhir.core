@@ -288,6 +288,16 @@ msgstr ""
 msgid "Error parsing the targetFormat ''{0}'': {1}"
 msgstr ""
 
+# BUNDLE_SIGNATURE_CERT_DETAILS
+#: BUNDLE_SIGNATURE_CERT_DETAILS
+msgid "Signing Certificate Details: Subject=''{0}'', Issuer=''{1}'', Serial=''{2}''"
+msgstr ""
+
+# BUNDLE_SIGNATURE_CERT_SOURCE
+#: BUNDLE_SIGNATURE_CERT_SOURCE
+msgid "Signing Certificate Source: {0}"
+msgstr ""
+
 # BUNDLE_SIGNATURE_CHECKED_DATA_B64
 #: BUNDLE_SIGNATURE_CHECKED_DATA_B64
 msgid "The signature data is not valid base64 content, but it looks like native application/jose, so it will be checked anyway"
@@ -405,6 +415,11 @@ msgstr ""
 msgid "Error parsing the digital signature header: {0}"
 msgstr ""
 
+# BUNDLE_SIGNATURE_HEADER_SIG_TIME_WRONG_FORMAT
+#: BUNDLE_SIGNATURE_HEADER_SIG_TIME_WRONG_FORMAT
+msgid "The sigT header has the wrong format: {0}"
+msgstr ""
+
 # BUNDLE_SIGNATURE_HEADER_WHEN_MISMATCH
 #: BUNDLE_SIGNATURE_HEADER_WHEN_MISMATCH
 msgid "The time in the signature {0} is not the same as the stated time {1}"
@@ -495,6 +510,16 @@ msgstr ""
 # BUNDLE_SIGNATURE_SIGNED_BY_VERIFIED
 #: BUNDLE_SIGNATURE_SIGNED_BY_VERIFIED
 msgid "The content was signed by {0} (and this has been verified by the signature)"
+msgstr ""
+
+# BUNDLE_SIGNATURE_SIGNED_FOR
+#: BUNDLE_SIGNATURE_SIGNED_FOR
+msgid "The content claims that it was signed for the purpose of {1} ({0}), but this has not been verified"
+msgstr ""
+
+# BUNDLE_SIGNATURE_SIGNED_FOR_VERIFIED
+#: BUNDLE_SIGNATURE_SIGNED_FOR_VERIFIED
+msgid "The content was signed for the purpose of {1} ({0}) (and this has been verified by the signature)"
 msgstr ""
 
 # BUNDLE_SIGNATURE_SIG_DIGEST_MISMATCH
@@ -1855,7 +1880,7 @@ msgstr ""
 #: FHIRPATH_LEFT_VALUE
 msgctxt "FHIRPATH_LEFT_VALUE"
 msgid "-- no content: do not translate #32 --"
-msgid_plural "Error evaluating FHIRPath expression: left operand to {1} can only have 1 value, but has {0} values"
+msgid_plural "Error evaluating FHIRPath expression: left operand to {1} can only have 1 value, but has {0} values ({2})"
 msgstr[0] ""
 msgstr[1] "Error evaluando la expresión FHIRPath: el operando a la izquierda de {1} puede tener solo 1 valor pero tiene {0} valores"
 msgstr[2] "Error evaluando la expresión FHIRPath: el operando a la izquierda de {1} puede tener solo 1 valor pero tiene {0} valores"
@@ -2025,7 +2050,7 @@ msgstr "Error evaluando la expresión FHIRPath: El tipo de parametro {2} no es v
 
 # FILTER_NOT_UNDERSTOOD
 #: FILTER_NOT_UNDERSTOOD
-msgid "The filter \\\"{0} {1} {2}\\\" from the value set {3} was not understood in the context of {4}"
+msgid "The filter \"{0} {1} {2}\" from the value set {3} was not understood in the context of {4}"
 msgstr ""
 
 # Fixed_Type_Checks_DT_Address_Line
@@ -2065,7 +2090,7 @@ msgstr ""
 
 # HTA_LOINC_MESSAGE
 #: HTA_LOINC_MESSAGE
-msgid "This material contains content from <a href=\\\"http://loinc.org\\\">LOINC</a>. LOINC is copyright &copy; 1995-2020, Regenstrief Institute, Inc. and the Logical Observation Identifiers Names and Codes (LOINC) Committee and is available at no cost under the <a href=\\\"http://loinc.org/license\\\">license</a>. LOINC&reg; is a registered United States trademark of Regenstrief Institute, Inc."
+msgid "This material contains content from <a href=\\"http://loinc.org\\">LOINC</a>. LOINC is copyright &copy; 1995-2020, Regenstrief Institute, Inc. and the Logical Observation Identifiers Names and Codes (LOINC) Committee and is available at no cost under the <a href=\\"http://loinc.org/license\\">license</a>. LOINC&reg; is a registered United States trademark of Regenstrief Institute, Inc."
 msgstr ""
 
 # HTA_SCT_DESC
@@ -2075,7 +2100,7 @@ msgstr ""
 
 # HTA_SCT_MESSAGE
 #: HTA_SCT_MESSAGE
-msgid "This material contains content that is copyright of SNOMED International. Implementers of these specifications must have the appropriate SNOMED CT Affiliate license - for more information contact <a href=\\\"https://www.snomed.org/get-snomed\\\">https://www.snomed.org/get-snomed</a> or <a href=\\\"mailto:info@snomed.org\\\">info@snomed.org</a>."
+msgid "This material contains content that is copyright of SNOMED International. Implementers of these specifications must have the appropriate SNOMED CT Affiliate license - for more information contact <a href=\\"https://www.snomed.org/get-snomed\\">https://www.snomed.org/get-snomed</a> or <a href=\\"mailto:info@snomed.org\\">info@snomed.org</a>."
 msgstr ""
 
 # IG_DEPENDENCY_CAN_VERSION_ALONE
@@ -3987,6 +4012,21 @@ msgstr ""
 # SD_ED_ADDITIONAL_BINDING_USAGE_UNKNOWN
 #: SD_ED_ADDITIONAL_BINDING_USAGE_UNKNOWN
 msgid "The Usage Context {0}#{1} is not recognized so cannot be validated"
+msgstr ""
+
+# SD_ED_BIND_ALLSCT_CODES
+#: SD_ED_BIND_ALLSCT_CODES
+msgid "This binding is to ALL SNOMED CT codes, which includes qualifiers etc. The value set choice should be reviewed"
+msgstr ""
+
+# SD_ED_BIND_ALL_CPT_CODES
+#: SD_ED_BIND_ALL_CPT_CODES
+msgid "This binding is to ALL CPT codes, which includes modifiers and internal metadata codes. The value set choice should be reviewed"
+msgstr ""
+
+# SD_ED_BIND_ALL_LOINC_CODES
+#: SD_ED_BIND_ALL_LOINC_CODES
+msgid "This binding is to ALL LOINC codes, which includes part codes and answer list codes. The value set choice should be reviewed"
 msgstr ""
 
 # SD_ED_BIND_MULTIPLE_TYPES
@@ -6192,8 +6232,8 @@ msgstr ""
 
 # VALIDATION_VAL_PROFILE_DEPENDS_NOT_RESOLVED
 #: VALIDATION_VAL_PROFILE_DEPENDS_NOT_RESOLVED
-msgid "Profile {1} identifies {2} as a dependency (using the extension http://hl7.org/fhir/StructureDefinition/structuredefinition-dependencies), but this profile could not be found"
-msgstr "El perfile {1} identifica {2} como una dependencia (usando la extensión http://hl7.org/fhir/StructureDefinition/structuredefinition-dependencies), pero este perfil no pudo ser encontrado"
+msgid "Profile {1} identifies {0} as a dependency (using the extension http://hl7.org/fhir/StructureDefinition/structuredefinition-dependencies), but this profile could not be found"
+msgstr "!!El perfile {1} identifica {2} como una dependencia (usando la extensión http://hl7.org/fhir/StructureDefinition/structuredefinition-dependencies), pero este perfil no pudo ser encontrado"
 
 # VALIDATION_VAL_PROFILE_MINIMUM_MAGIC
 #: VALIDATION_VAL_PROFILE_MINIMUM_MAGIC
@@ -6333,6 +6373,11 @@ msgstr ""
 # VALUESET_BAD_FILTER_VALUE_CODED_INVALID
 #: VALUESET_BAD_FILTER_VALUE_CODED_INVALID
 msgid "The value for a filter based on property ''{0}'' is ''{1}'' which is not a valid code ({2})"
+msgstr ""
+
+# VALUESET_BAD_FILTER_VALUE_CODED_LEGACY
+#: VALUESET_BAD_FILTER_VALUE_CODED_LEGACY
+msgid "The value for a filter based on property ''{0}'' should be in the format system(|version)#code, not the coding search pattern ''{1}''"
 msgstr ""
 
 # VALUESET_BAD_FILTER_VALUE_DATETIME
@@ -6608,6 +6653,11 @@ msgstr ""
 # VALUESET_TOO_COSTLY_TIME
 #: VALUESET_TOO_COSTLY_TIME
 msgid "The value set ''{0}'' {2} took too long to process (>{1}sec)"
+msgstr ""
+
+# VALUESET_TXVER_BATCH_NOT_SUPPORTED
+#: VALUESET_TXVER_BATCH_NOT_SUPPORTED
+msgid "The terminology server {2} used for the CodeSystem {1} does not support batch validation (tx version {0}), so the codes have not been validated"
 msgstr ""
 
 # VALUESET_UNC_SYSTEM_WARNING

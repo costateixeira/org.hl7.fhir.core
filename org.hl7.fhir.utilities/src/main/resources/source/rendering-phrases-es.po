@@ -731,6 +731,11 @@ msgstr ""
 msgid "This code system resource is a supplement to"
 msgstr ""
 
+# CODE_SYS_SUPP_CODE_NOT_HERE
+#: CODE_SYS_SUPP_CODE_NOT_HERE
+msgid "This CodeSystem Supplement is not used here; it may be used elsewhere (e.g. specifications and/or implementations that use this content)"
+msgstr ""
+
 # CODE_SYS_THE_VALUE_SET
 #: CODE_SYS_THE_VALUE_SET
 msgid "{0} is the value set for all codes in this code system"
@@ -2772,7 +2777,7 @@ msgstr ""
 
 # R44B_PACKAGE_REF
 #: R44B_PACKAGE_REF
-msgid "Packages for both <a href=\"{0}\">R4 ({1}.r4)</a> and <a href=\\\"{2}\\\">R4B ({3}.r4b)</a> are available."
+msgid "Packages for both <a href=\"{0}\">R4 ({1}.r4)</a> and <a href=\\"{2}\\">R4B ({3}.r4b)</a> are available."
 msgstr ""
 
 # R44B_PROBLEMS
@@ -5384,6 +5389,14 @@ msgstr ""
 #: VALUE_SET_LOINCV
 msgid "Loinc v"
 msgstr ""
+
+# VALUE_SET_NEEDS_SUPPL
+#: VALUE_SET_NEEDS_SUPPL
+msgid "This ValueSet requires the Code system Supplement"
+msgid_plural "This ValueSet requires the Code system Supplements"
+msgstr[0] ""
+msgstr[1] ""
+msgstr[2] ""
 
 # VALUE_SET_NO
 #: VALUE_SET_NO
