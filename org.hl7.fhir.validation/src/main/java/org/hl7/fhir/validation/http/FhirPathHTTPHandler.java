@@ -29,14 +29,35 @@ class FhirPathHTTPHandler extends BaseHTTPHandler implements HttpHandler {
     try {
       Map<String, String> params = parseQueryParams(exchange.getRequestURI().getQuery());
       String expression = params.get("expression");
-      if (expression == null || expression.trim().isEmpty()) {
-        sendOperationOutcome(exchange, 400, OperationOutcomeUtilities.createError("Missing required query parameter: expression"), getAcceptHeader(exchange));
-        return;
-      }
 
       byte[] resourceBytes = readRequestBody(exchange);
       String contentType = exchange.getRequestHeaders().getFirst("Content-Type");
       FhirFormat format = determineFormat(contentType);
+
+      // If expression not in query string, try to read from JSON body wrapper
+      if ((expression == null || expression.trim().isEmpty()) && contentType != null && contentType.contains("json")) {
+        try {
+          org.hl7.fhir.utilities.json.model.JsonObject wrapper = org.hl7.fhir.utilities.json.parser.JsonParser.parseObject(resourceBytes);
+          if (wrapper.has("expression")) {
+            expression = wrapper.asString("expression");
+            // Re-extract the resource from the wrapper
+            if (wrapper.has("resource")) {
+              if (wrapper.hasObject("resource")) {
+                resourceBytes = org.hl7.fhir.utilities.json.parser.JsonParser.composeBytes(wrapper.getJsonObject("resource"));
+              } else {
+                resourceBytes = wrapper.asString("resource").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+              }
+            }
+          }
+        } catch (Exception e) {
+          // Not a wrapper object — treat body as the FHIR resource itself (original behavior)
+        }
+      }
+
+      if (expression == null || expression.trim().isEmpty()) {
+        sendOperationOutcome(exchange, 400, OperationOutcomeUtilities.createError("Missing required parameter: expression (provide as query parameter or in JSON body)"), getAcceptHeader(exchange));
+        return;
+      }
 
       String result = fhirValidatorHttpService.getValidationEngine().evaluateFhirPath(resourceBytes, format, expression);
 

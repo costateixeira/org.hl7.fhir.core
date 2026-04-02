@@ -232,7 +232,7 @@ class FhirValidatorHttpServiceTest {
     HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
     assertEquals(400, response.statusCode());
-    assertTrue(response.body().contains("Missing required query parameter: expression"));
+    assertTrue(response.body().contains("Missing required parameter: expression"));
   }
 
   @Test
@@ -857,5 +857,158 @@ class FhirValidatorHttpServiceTest {
     assertEquals(expected, actual);
   }
 
+  // ============== GITB Service Tests ==============
+
+  @Test
+  @DisplayName("GITB FHIRPath - Definition")
+  void testGitbFhirPathDefinition() throws Exception {
+    setUpService(getValidationEngine());
+    HttpRequest request = HttpRequest.newBuilder()
+      .uri(URI.create(BASE_URL + "/api/fhirpath/definition"))
+      .GET()
+      .build();
+    HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+    assertEquals(200, response.statusCode());
+    String body = response.body();
+    assertTrue(body.contains("\"id\":\"FHIRPathProcessor\""));
+    assertTrue(body.contains("\"evaluate\""));
+  }
+
+  @Test
+  @DisplayName("GITB FHIRPath - Evaluate")
+  void testGitbFhirPathEvaluate() throws Exception {
+    setUpService(getValidationEngine());
+    String requestBody = "{\"operation\":\"evaluate\",\"inputs\":{\"resource\":" +
+      gson.toJson(SAMPLE_PATIENT_JSON.trim()) +
+      ",\"expression\":\"Patient.name.family\"}}";
+    HttpRequest request = HttpRequest.newBuilder()
+      .uri(URI.create(BASE_URL + "/api/fhirpath/process"))
+      .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+      .header("Content-Type", "application/json")
+      .build();
+    HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+    assertEquals(200, response.statusCode());
+    String body = response.body();
+    assertTrue(body.contains("\"result\":\"SUCCESS\""));
+    assertTrue(body.contains("Doe"));
+  }
+
+  @Test
+  @DisplayName("GITB Validator - Definition")
+  void testGitbValidatorDefinition() throws Exception {
+    setUpService(getValidationEngine());
+    HttpRequest request = HttpRequest.newBuilder()
+      .uri(URI.create(BASE_URL + "/api/validator/definition"))
+      .GET()
+      .build();
+    HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+    assertEquals(200, response.statusCode());
+    String body = response.body();
+    assertTrue(body.contains("\"id\":\"FHIRValidator\""));
+    assertTrue(body.contains("\"validate\""));
+    assertTrue(body.contains("\"loadIG\""));
+  }
+
+  @Test
+  @DisplayName("GITB Validator - Validate")
+  void testGitbValidatorValidate() throws Exception {
+    setUpService(getValidationEngine());
+    String requestBody = "{\"operation\":\"validate\",\"inputs\":{\"resource\":" +
+      gson.toJson(SAMPLE_PATIENT_JSON.trim()) +
+      ",\"profiles\":\"http://hl7.org/fhir/StructureDefinition/Patient\"}}";
+    HttpRequest request = HttpRequest.newBuilder()
+      .uri(URI.create(BASE_URL + "/api/validator/process"))
+      .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+      .header("Content-Type", "application/json")
+      .build();
+    HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+    assertEquals(200, response.statusCode());
+    String body = response.body();
+    assertTrue(body.contains("\"result\":\"SUCCESS\""));
+    assertTrue(body.contains("\"outcome\""));
+    assertTrue(body.contains("\"errors\""));
+    assertTrue(body.contains("\"warnings\""));
+  }
+
+  @Test
+  @DisplayName("GITB Validation Results - Summarize")
+  void testGitbValidationResultsSummarize() throws Exception {
+    setUpService(getValidationEngine());
+    String outcomeJson = "{\"resourceType\":\"OperationOutcome\",\"issue\":[" +
+      "{\"severity\":\"error\",\"code\":\"invalid\",\"details\":{\"text\":\"Bad\"}}," +
+      "{\"severity\":\"warning\",\"code\":\"informational\",\"details\":{\"text\":\"Warn\"}}," +
+      "{\"severity\":\"error\",\"code\":\"invalid\",\"details\":{\"text\":\"Bad2\"}}" +
+      "]}";
+    String requestBody = "{\"operation\":\"summarize\",\"inputs\":{\"outcome\":" +
+      gson.toJson(outcomeJson) + "}}";
+    HttpRequest request = HttpRequest.newBuilder()
+      .uri(URI.create(BASE_URL + "/api/validation-results/process"))
+      .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+      .header("Content-Type", "application/json")
+      .build();
+    HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+    assertEquals(200, response.statusCode());
+    String body = response.body();
+    assertTrue(body.contains("\"result\":\"SUCCESS\""));
+    assertTrue(body.contains("\"errors\":\"2\""));
+    assertTrue(body.contains("\"warnings\":\"1\""));
+  }
+
+  @Test
+  @DisplayName("GITB Validation Results - Filter by severity")
+  void testGitbValidationResultsFilterBySeverity() throws Exception {
+    setUpService(getValidationEngine());
+    String outcomeJson = "{\"resourceType\":\"OperationOutcome\",\"issue\":[" +
+      "{\"severity\":\"error\",\"code\":\"invalid\",\"details\":{\"text\":\"Bad\"}}," +
+      "{\"severity\":\"warning\",\"code\":\"informational\",\"details\":{\"text\":\"Warn\"}}," +
+      "{\"severity\":\"error\",\"code\":\"invalid\",\"details\":{\"text\":\"Bad2\"}}" +
+      "]}";
+    String requestBody = "{\"operation\":\"filterBySeverity\",\"inputs\":{\"outcome\":" +
+      gson.toJson(outcomeJson) + ",\"severity\":\"warning\"}}";
+    HttpRequest request = HttpRequest.newBuilder()
+      .uri(URI.create(BASE_URL + "/api/validation-results/process"))
+      .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+      .header("Content-Type", "application/json")
+      .build();
+    HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"count\":\"1\""));
+  }
+
+  @Test
+  @DisplayName("GITB Validation Results - Filter by text")
+  void testGitbValidationResultsFilterByText() throws Exception {
+    setUpService(getValidationEngine());
+    String outcomeJson = "{\"resourceType\":\"OperationOutcome\",\"issue\":[" +
+      "{\"severity\":\"error\",\"code\":\"invalid\",\"details\":{\"text\":\"Bad value\"}}," +
+      "{\"severity\":\"warning\",\"code\":\"informational\",\"details\":{\"text\":\"Something else\"}}," +
+      "{\"severity\":\"error\",\"code\":\"invalid\",\"details\":{\"text\":\"Bad format\"}}" +
+      "]}";
+    String requestBody = "{\"operation\":\"filterByText\",\"inputs\":{\"outcome\":" +
+      gson.toJson(outcomeJson) + ",\"text\":\"Bad\"}}";
+    HttpRequest request = HttpRequest.newBuilder()
+      .uri(URI.create(BASE_URL + "/api/validation-results/process"))
+      .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+      .header("Content-Type", "application/json")
+      .build();
+    HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"count\":\"2\""));
+  }
+
+  @Test
+  @DisplayName("GITB - Unknown operation returns FAILURE")
+  void testGitbUnknownOperation() throws Exception {
+    setUpService(getValidationEngine());
+    String requestBody = "{\"operation\":\"nonexistent\",\"inputs\":{}}";
+    HttpRequest request = HttpRequest.newBuilder()
+      .uri(URI.create(BASE_URL + "/api/fhirpath/process"))
+      .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+      .header("Content-Type", "application/json")
+      .build();
+    HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"result\":\"FAILURE\""));
+  }
 
 }
