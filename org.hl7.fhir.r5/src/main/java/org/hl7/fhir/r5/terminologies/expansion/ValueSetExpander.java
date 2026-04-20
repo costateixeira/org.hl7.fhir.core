@@ -1795,7 +1795,7 @@ public class ValueSetExpander extends ValueSetProcessBase {
         }
       }
     } else if ("code".equals(fc.getProperty()) && fc.getOp() == FilterOperator.REGEX) {
-      ExecuteWithTimeout.runWithTimeout(REGEX_TIMEOUT_LIMIT, "Regex Filter Evaluation", () -> {
+      ExecuteWithTimeout.runWithTimeout(REGEX_TIMEOUT_LIMIT, "Regex filter evaluation", () -> {
         for (ConceptDefinitionComponent def : cs.getConcept()) {
           if (exclude) {
             excludeCodeAndDescendents(wc, cs, inc.getSystem(), cs.getVersion(), def, null, imports, null, new RegexFilter(allErrors, fc.getValue()), filters, exp, Integer.MAX_VALUE);
