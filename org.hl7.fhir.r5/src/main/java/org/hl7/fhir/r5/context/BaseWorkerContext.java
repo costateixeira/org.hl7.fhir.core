@@ -1853,7 +1853,7 @@ public abstract class BaseWorkerContext extends I18nBase implements IWorkerConte
       }
     }
     for (CanonicalType u : inc.getValueSet()) {
-      ValueSet vs = fetchResource(ValueSet.class, u.getValue(), ExtensionUtilities.getVersionResolutionRules(inc));
+      ValueSet vs = findTxResource(ValueSet.class, u.getValue(), ExtensionUtilities.getVersionResolutionRules(inc));
       if (vs != null) {
         findRelevantSystems(set, vs);
       } else if (u.getValue() != null && u.getValue().startsWith("http://snomed.info/sct")) {
@@ -2368,6 +2368,7 @@ public abstract class BaseWorkerContext extends I18nBase implements IWorkerConte
                 cr.setUrl(UUIDUtilities.makeUuidUrn());
               }
             }
+            r.setUserData(UserDataNames.CONTAINED_RESOURCE, true);
             return (T) r;
           }
         }
