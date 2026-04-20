@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.hl7.fhir.r5.context.IWorkerContext;
 import org.hl7.fhir.r5.fhirpath.ExpressionNode;
 import org.hl7.fhir.r5.fhirpath.FHIRPathEngine;
 import org.hl7.fhir.r5.fhirpath.TypeDetails;
@@ -118,7 +119,7 @@ public class StructureDefinitionMappingProvider extends ModelMappingProvider {
     if ("n/a".equals(s)) {
       x.tx(s);
     } else if (s.startsWith("http:") || s.startsWith("https:")) {
-      Resource res = context.getContext().fetchResource(Resource.class, s);
+      Resource res = context.getContext().fetchResource(Resource.class, s, IWorkerContext.VersionResolutionRules.PACKAGE);
       if (res == null) {
         res = context.getResolveLinkResolver().findLinkableResource(Resource.class, s);
       }

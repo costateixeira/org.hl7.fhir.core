@@ -450,7 +450,6 @@ public class PackageReGenerator {
               ExpressionNode node = pathEngine.parse(inv.getExpression());
               processExpression(node);
             } catch (Exception e) {
-              // e.printStackTrace();
               log.error("Error in FHIRPath expression: "+inv.getExpression()+" ("+e.getMessage()+")");
             }
           }

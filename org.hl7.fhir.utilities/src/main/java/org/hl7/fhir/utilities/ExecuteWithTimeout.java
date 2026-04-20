@@ -10,17 +10,17 @@ public class ExecuteWithTimeout {
     void run() throws Exception;
   }
 
-  public static void runWithTimeout(int seconds, ThrowingRunnable task) throws FHIRException {
+  public static void runWithTimeout(int seconds, String taskName, ThrowingRunnable task) throws FHIRException {
     ExecutorService executor = Executors.newSingleThreadExecutor();
     Future<?> future = executor.submit(() -> { task.run(); return null; });
     try {
       future.get(seconds, TimeUnit.SECONDS);
     } catch (TimeoutException e) {
       future.cancel(true);
-      throw new FHIRException("Regex filter evaluation timed out");
+      throw new FHIRException(taskName+" timed out");
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      throw new FHIRException("Regex filter evaluation interrupted");
+      throw new FHIRException(taskName+" interrupted");
     } catch (ExecutionException e) {
       if (e.getCause() instanceof FHIRException) throw (FHIRException) e.getCause();
       throw new FHIRException(e.getCause());

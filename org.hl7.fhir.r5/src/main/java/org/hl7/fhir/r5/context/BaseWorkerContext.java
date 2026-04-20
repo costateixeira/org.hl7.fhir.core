@@ -1617,7 +1617,7 @@ public abstract class BaseWorkerContext extends I18nBase implements IWorkerConte
       Parameters pOut = tc.getClient().subsumes(pIn);
       return processSubsumesResult(pOut, tc.getClient().getAddress());
     } catch (Exception e) {
-      // e.printStackTrace();
+      // nothing - for now?
     }
     return null;
   }

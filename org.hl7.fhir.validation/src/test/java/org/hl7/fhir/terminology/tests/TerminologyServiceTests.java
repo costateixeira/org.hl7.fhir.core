@@ -101,7 +101,7 @@ private static TxTestData testData;
     String reqFile = setup.getTest().asString("request");
     Resource req = reqFile == null ? null : loadResource(reqFile);
     String fn = setup.getTest().has("response:tx.fhir.org") ? setup.getTest().asString("response:tx.fhir.org") : setup.getTest().asString("response");
-    String fn2 = setup.getTest().has("response2") ? setup.getTest().asString("response2") : null;
+    String fn2 = setup.getTest().has("response2") ? setup.getTest().asString("response2") : null; // alternative allowed response for servers unable to implement a feature
     String resp = testData.load(fn);
     String resp2 = fn2 == null ? null : testData.load(fn2);
     String fp = Utilities.path("[tmp]", "tx", fn);
@@ -184,7 +184,7 @@ private static TxTestData testData;
     if (resp.contains("\"ValueSet\"")) {
       if (vse.getValueset() == null) {
         if (resp2 != null) {
-          OperationOutcome oo = makeOO(vse);
+          OperationOutcome oo = makeOperationOutcome(vse);
 
           String ooj = new JsonParser().setOutputStyle(OutputStyle.PRETTY).composeString(oo);
           String diff = new CompareUtilities(modes(), ext, vars()).checkJsonSrcIsSame(id, resp2, ooj);
@@ -216,7 +216,7 @@ private static TxTestData testData;
         Assertions.assertNull(diff);
       }
     } else {
-      OperationOutcome oo = makeOO(vse);
+      OperationOutcome oo = makeOperationOutcome(vse);
 
       String ooj = new JsonParser().setOutputStyle(OutputStyle.PRETTY).composeString(oo);
       String diff = new CompareUtilities(modes(), ext, vars()).checkJsonSrcIsSame(id, resp, ooj);
@@ -228,7 +228,7 @@ private static TxTestData testData;
     }
   }
 
-  private static @NonNull OperationOutcome makeOO(ValueSetExpansionOutcome vse) {
+  private static @NonNull OperationOutcome makeOperationOutcome(ValueSetExpansionOutcome vse) {
     OperationOutcome oo = new OperationOutcome();
     if (vse.getIssues() != null) {
       oo.getIssue().addAll(vse.getIssues());
