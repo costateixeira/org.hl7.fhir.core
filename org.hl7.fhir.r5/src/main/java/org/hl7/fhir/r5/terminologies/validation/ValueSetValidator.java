@@ -906,8 +906,7 @@ public class ValueSetValidator extends ValueSetProcessBase {
         res.setMessage(CommaSeparatedStringBuilder.join("; ", msgs));
       } else {
         for (OperationOutcomeIssueComponent issue : issues) {
-          if (issue.getSeverity() != OperationOutcome.IssueSeverity.ERROR &&
-            "INACTIVE_CONCEPT_FOUND".equals(issue.getExtensionString(ExtensionDefinitions.EXT_ISSUE_MSG_ID))) {
+          if (issue.getSeverity() != OperationOutcome.IssueSeverity.ERROR && "INACTIVE_CONCEPT_FOUND".equals(issue.getExtensionString(ExtensionDefinitions.EXT_ISSUE_MSG_ID))) {
             msgs.add(issue.getDetails().getText());
           }
         }
