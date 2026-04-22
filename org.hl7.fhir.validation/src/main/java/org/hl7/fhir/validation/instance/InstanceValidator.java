@@ -1849,15 +1849,15 @@ public class InstanceValidator extends BaseValidator implements IResourceValidat
     }
     String basePath = definition.getPath();
     String baseType = basePath.contains(".") ? basePath.substring(0, basePath.indexOf(".")) : basePath;
-    StructureDefinition baseProfile = context.fetchResource(StructureDefinition.class, baseType);
+    StructureDefinition baseProfile = context.fetchResource(StructureDefinition.class, baseType, IWorkerContext.VersionResolutionRules.PACKAGE);
     if (baseProfile == null) {
       return false;
     }
     ElementDefinition base = baseProfile.getSnapshot().getElementByPath(basePath);
-    return isBaseBinding(base, definition);
+    return isBaseBinding(base, definition, profile);
   }
 
-  private boolean isBaseBinding(ElementDefinition base, ElementDefinition definition) {
+  private boolean isBaseBinding(ElementDefinition base, ElementDefinition definition, StructureDefinition profile) {
     if (base == null || !base.hasBinding()) {
       return false;
     }
@@ -1866,8 +1866,8 @@ public class InstanceValidator extends BaseValidator implements IResourceValidat
     if (baseBinding.getStrength() != definitionBinding.getStrength()) {
       return false;
     }
-    ValueSet baseVS = context.fetchResource(ValueSet.class, baseBinding.getValueSet());
-    ValueSet defnVS = context.fetchResource(ValueSet.class, definitionBinding.getValueSet());
+    ValueSet baseVS = context.fetchResource(ValueSet.class, baseBinding.getValueSet(), IWorkerContext.VersionResolutionRules.PACKAGE);
+    ValueSet defnVS = context.fetchResource(ValueSet.class, definitionBinding.getValueSet(), IWorkerContext.VersionResolutionRules.PACKAGE, null, profile);
     if (baseVS == null || defnVS == null) {
       return false;
     } else {
@@ -2148,7 +2148,7 @@ public class InstanceValidator extends BaseValidator implements IResourceValidat
               else if (!noExtensibleWarnings)
                 txWarningForLaterRemoval(element, errors, NO_RULE_DATE, vr.getTxLink(), vr.getDiagnostics(), IssueType.CODEINVALID, element.line(), element.col(), path, false, I18nConstants.TERMINOLOGY_TX_CONFIRM_5, describeReference(vsRef.primitiveValue(), valueset, bc, usageNote));
             } else if (strength == BindingStrength.PREFERRED) {
-              if (isBaseBinding(profile, definition) || settings.isForPublication()) {
+              if (!isBaseBinding(profile, definition) || settings.isForPublication()) {
                 txHint(errors, NO_RULE_DATE, vr.getTxLink(), vr.getDiagnostics(), IssueType.CODEINVALID, element.line(), element.col(), path, false, I18nConstants.TERMINOLOGY_TX_CONFIRM_6, describeReference(vsRef.primitiveValue(), valueset, bc, usageNote));
               }
             }
@@ -2160,7 +2160,7 @@ public class InstanceValidator extends BaseValidator implements IResourceValidat
             else
               txWarning(errors, NO_RULE_DATE, vr.getTxLink(), vr.getDiagnostics(), IssueType.CODEINVALID, element.line(), element.col(), path, false, I18nConstants.TERMINOLOGY_TX_NOVALID_5, describeReference(vsRef.primitiveValue(), valueset, bc, usageNote), (vr.getMessage() != null ? " (error message = " + vr.getMessage() + ")" : ""), system+"#"+code);
           } else if (strength == BindingStrength.PREFERRED) {
-            if (isBaseBinding(profile, definition) || settings.isForPublication()) {
+            if (!isBaseBinding(profile, definition) || settings.isForPublication()) {
               txHint(errors, NO_RULE_DATE, vr.getTxLink(), vr.getDiagnostics(), IssueType.CODEINVALID, element.line(), element.col(), path, false, I18nConstants.TERMINOLOGY_TX_NOVALID_6, describeReference(vsRef.primitiveValue(), valueset, bc, usageNote), (vr.getMessage() != null ? " (error message = " + vr.getMessage() + ")" : ""), system+"#"+code);
             }
           }

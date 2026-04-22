@@ -77,7 +77,7 @@ public class ExternalTerminologyServiceTests implements ITxTesterLoader {
         public void finished() {
           pool.shutdown();
           try {
-            pool.awaitTermination(1, TimeUnit.HOURS);
+            pool.awaitTermination(1, TimeUnit.MINUTES);
           } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
           }

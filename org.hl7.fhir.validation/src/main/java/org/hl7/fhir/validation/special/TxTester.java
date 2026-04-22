@@ -8,6 +8,7 @@ import java.net.URISyntaxException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -69,20 +70,6 @@ public class TxTester implements ITerminologyRequestIdProvider {
       this.message = message;
       this.result = false;
     }
-  }
-
-  public static class IntHolder {
-
-    private int count;
-
-    public void count() {
-      count++;
-    }
-
-    public int total() {
-      return count;
-    }
-
   }
 
   public interface ITxTesterLoader {
@@ -207,8 +194,8 @@ public class TxTester implements ITerminologyRequestIdProvider {
       log.info("  Filter Parameter: "+filter);
     }
 
-    IntHolder counter = new IntHolder();
-    IntHolder errCount = new IntHolder();
+    AtomicInteger counter = new AtomicInteger();
+    AtomicInteger errCount = new AtomicInteger();
     JsonObject json = new JsonObject();
     List<StringPair> versions = new ArrayList<StringPair>();
     json.add("date", new SimpleDateFormat("EEE, MMM d, yyyy HH:mmZ", new Locale("en", "US")).format(Calendar.getInstance().getTime()) + timezone());
@@ -234,20 +221,20 @@ public class TxTester implements ITerminologyRequestIdProvider {
       }
       FileUtilities.stringToFile(JsonParser.compose(json, true), Utilities.path(outputDir, "test-results.json"));
 
-      int c = counter.total() * 100;
-      int e = errCount.total() * 100;
-      double s = counter.total() == 0 ? 0 : (c - e) / counter.total();
+      int c = counter.intValue() * 100;
+      int e = errCount.intValue() * 100;
+      double s = counter.intValue() == 0 ? 0 : (c - e) / counter.intValue();
 
       testReport.setScore(s / 100);
-      testReport.setResult(errCount.total() == 0 ? TestReportResult.PASS : TestReportResult.FAIL);
+      testReport.setResult(errCount.intValue() == 0 ? TestReportResult.PASS : TestReportResult.FAIL);
 
       if (filter == null) {
         String m = modes.isEmpty() ? "[none]" : CommaSeparatedStringBuilder.join("+", modes);
         if (ok) {
-          log.info(software+" passed all "+counter.total()+" HL7 terminology service tests ("+Utilities.pluralize("mode", modes.size())+" "+m+", tests v"+vString(versions)+", runner v"+VersionUtil.getBaseVersion()+")");
+          log.info(software+" passed all "+counter.intValue()+" HL7 terminology service tests ("+Utilities.pluralize("mode", modes.size())+" "+m+", tests v"+vString(versions)+", runner v"+VersionUtil.getBaseVersion()+")");
           return true;
         } else {
-          log.info(software+" failed "+errCount.total()+" of "+counter.total()+" HL7 terminology service tests ("+Utilities.pluralize("mode", modes.size())+" "+m+", tests v"+vString(versions)+", runner v"+VersionUtil.getBaseVersion()+")");
+          log.info(software+" failed "+errCount.intValue()+" of "+counter.intValue()+" HL7 terminology service tests ("+Utilities.pluralize("mode", modes.size())+" "+m+", tests v"+vString(versions)+", runner v"+VersionUtil.getBaseVersion()+")");
           log.info("Failed Tests: "+ CommaSeparatedStringBuilder.join(",", fails ));
           return false;
         }
@@ -517,7 +504,7 @@ public class TxTester implements ITerminologyRequestIdProvider {
     List<Resource> setup = loadSetupResources(loader, suite);
     TestReportTestComponent tr = getTestReportTest(suite, test);
 
-    ResultInformation ri = runTest(loader, suite, test, setup, modes, "*", null, new IntHolder(), tr);
+    ResultInformation ri = runTest(loader, suite, test, setup, modes, "*", null, new AtomicInteger(), tr);
     return ri.message;
   }
 
@@ -535,7 +522,7 @@ public class TxTester implements ITerminologyRequestIdProvider {
     return true;
   }
 
-  private boolean runSuite(ITxTesterLoader loader, JsonObject suite, Set<String> modes, String filter, JsonArray output, IntHolder counter, IntHolder errCount) throws FHIRFormatError, FileNotFoundException, IOException {
+  private boolean runSuite(ITxTesterLoader loader, JsonObject suite, Set<String> modes, String filter, JsonArray output, AtomicInteger counter, AtomicInteger errCount) throws FHIRFormatError, FileNotFoundException, IOException {
     log.info("Group "+suite.asString("name"));
     JsonObject outputS = new JsonObject();
     if (output != null) {
@@ -552,7 +539,7 @@ public class TxTester implements ITerminologyRequestIdProvider {
         } else {
           ResultInformation tok = runTest(loader, suite, test, setup, modes, filter, outputS.forceArray("tests"), counter, tr);
           if (!tok.result) {
-            errCount.count();
+            errCount.getAndAdd(1);
           }
           ok = tok.result && ok;
         }
@@ -570,7 +557,7 @@ public class TxTester implements ITerminologyRequestIdProvider {
   }
 
   private ResultInformation runTest(ITxTesterLoader loader, JsonObject suite, JsonObject test, List<Resource> setup, Set<String> modes, String filter,
-                                    JsonArray output, IntHolder counter, TestReportTestComponent tr) throws FHIRFormatError, DefinitionException, FileNotFoundException, FHIRException, IOException {
+                                    JsonArray output, AtomicInteger counter, TestReportTestComponent tr) throws FHIRFormatError, DefinitionException, FileNotFoundException, FHIRException, IOException {
     JsonObject outputT = new JsonObject();
     if (output != null) {
       output.add(outputT);
@@ -589,7 +576,7 @@ public class TxTester implements ITerminologyRequestIdProvider {
         }
       }
       try {
-        counter.count();
+        counter.getAndAdd( 1);
         if (header != null) {
           // Header is set on this thread's client only — no cross-thread race.
           client().setClientHeaders(new ClientHeaders(List.of(header)));
