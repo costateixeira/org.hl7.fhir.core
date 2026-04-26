@@ -416,8 +416,8 @@ public class ExampleScenarioRenderer extends TerminologyRenderer {
       }
       i = assignAlternativePrefixes(prefixes, step.getAlternative(), i);
       if (step.hasOperation()) {
-        prefixes.put(step.getOperation(), "node"+i);
-        i++;
+        // Operation shares its parent step's anchor so the diagram link and the textual anchor resolve to the same node.
+        prefixes.put(step.getOperation(), prefixes.get(step));
       }
     }
     return i;
