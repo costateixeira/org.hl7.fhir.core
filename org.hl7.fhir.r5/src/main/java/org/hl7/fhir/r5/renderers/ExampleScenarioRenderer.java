@@ -149,7 +149,7 @@ public class ExampleScenarioRenderer extends TerminologyRenderer {
   }
 
   protected String toPlantUml(Map<Element, String> prefixes, RenderingStatus status, ResourceWrapper res, ExampleScenarioProcessComponent process, ExampleScenario scen, Map<String, String> actorKeys) throws IOException {
-    String plantUml = "group " + process.getTitle() + " " + creolLink("details", prefixes.get(process), process.getDescription()) + "\r\n";
+    String plantUml = "group " + process.getTitle() + " " + creolLink("details", "#" + context.prefixAnchor(prefixes.get(process)), process.getDescription()) + "\r\n";
 
     Map<String,Boolean> actorsActive = new HashMap<String, Boolean>();
     for (ExampleScenarioActorComponent actor : scen.getActor()) {
@@ -188,14 +188,14 @@ public class ExampleScenarioRenderer extends TerminologyRenderer {
     plantUml.append(handleActivation(op.getInitiator(), op.getInitiatorActive(), actorsActive, actorKeys));
     plantUml.append(handleActivation(op.getReceiver(), op.getReceiverActive(), actorsActive, actorKeys));
     plantUml.append(actorKeys.get(op.getInitiator()) + " -> " + actorKeys.get(op.getReceiver()) + ": ");
-    plantUml.append(creolLink(op.getTitle(), prefixes.get(op), op.getDescription()));
+    plantUml.append(creolLink(op.getTitle(), "#" + context.prefixAnchor(prefixes.get(op)), op.getDescription()));
     if (op.hasRequest()) {
       plantUml.append(" (" + creolLink("payload", linkForInstance(op.getRequest())) + ")\r\n");
     }
     if (op.hasResponse()) {
       plantUml.append("activate " + actorKeys.get(op.getReceiver()) + "\r\n");
       plantUml.append(actorKeys.get(op.getReceiver()) + " --> " + actorKeys.get(op.getInitiator()) + ": ");
-      plantUml.append(creolLink("response", prefixes.get(op), op.getDescription()));
+      plantUml.append(creolLink("response", "#" + context.prefixAnchor(prefixes.get(op)), op.getDescription()));
       plantUml.append(" (" + creolLink("payload", linkForInstance(op.getResponse())) + ")\r\n");
       plantUml.append("deactivate " + actorKeys.get(op.getReceiver()) + "\r\n");
     }
