@@ -502,7 +502,7 @@ public class ExampleScenarioRenderer extends TerminologyRenderer {
       if (step.hasProcess()) {
         XhtmlNode n = row.td().colspan(6);
         n.tx(context.formatPhrase(RenderingContext.EX_SCEN_SEE));
-        n.ah(context.prefixLocalHref("#" + context.prefixAnchor(prefixes.get(step)))).tx(step.getProcess().getTitle());
+        n.ah(context.prefixLocalHref("#" + context.prefixAnchor(prefixes.get(step.getProcess())))).tx(step.getProcess().getTitle());
         n.tx(" "+ context.formatPhrase(RenderingContext.EX_SCEN_BEL));
 
       } else if (step.hasWorkflow()) {
