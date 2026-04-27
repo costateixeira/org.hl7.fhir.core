@@ -137,7 +137,7 @@ class FhirValidatorHttpServiceTest {
       setUpService(getValidationEngine());
 
       HttpRequest request = HttpRequest.newBuilder()
-        .uri(URI.create(BASE_URL + "/validateResource?resourceIdRule=OPTIONAL&extension=any&bestPractice=Ignore&checkDisplay=Ignore"))
+        .uri(URI.create(BASE_URL + "/validate?resourceIdRule=OPTIONAL&extension=any&bestPractice=Ignore&checkDisplay=Ignore"))
         .POST(HttpRequest.BodyPublishers.ofString(SAMPLE_PATIENT_JSON))
         .header("Content-Type", "application/fhir+json")
         .header("Accept", "application/fhir+json")
@@ -177,7 +177,7 @@ class FhirValidatorHttpServiceTest {
       setUpService(getValidationEngine());
 
       HttpRequest request = HttpRequest.newBuilder()
-        .uri(URI.create(BASE_URL + "/validateResource?resourceIdRule=REQUIRED&bestPractice=Warning&checkDisplay=Check"))
+        .uri(URI.create(BASE_URL + "/validate?resourceIdRule=REQUIRED&bestPractice=Warning&checkDisplay=Check"))
         .POST(HttpRequest.BodyPublishers.ofString(SAMPLE_PATIENT_XML))
         .header("Content-Type", "application/fhir+xml")
         .header("Accept", "application/fhir+xml")
@@ -296,7 +296,7 @@ class FhirValidatorHttpServiceTest {
       String profilesParam = "http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient";
 
       HttpRequest request = HttpRequest.newBuilder()
-        .uri(URI.create(BASE_URL + "/validateResource?profile=" + java.net.URLEncoder.encode(profilesParam, "UTF-8")))
+        .uri(URI.create(BASE_URL + "/validate?profile=" + java.net.URLEncoder.encode(profilesParam, "UTF-8")))
         .POST(HttpRequest.BodyPublishers.ofString(SAMPLE_PATIENT_JSON))
         .header("Content-Type", "application/fhir+json")
         .build();
@@ -334,7 +334,7 @@ class FhirValidatorHttpServiceTest {
       setUpService(getValidationEngineWithIG());
 
       HttpRequest request = HttpRequest.newBuilder()
-        .uri(URI.create(BASE_URL + "/validateResource?bestPractice=Ignore&profile=http%3A%2F%2Fhl7.org%2Ffhir%2Fus%2Fcore%2FStructureDefinition%2Fus-core-patient"))
+        .uri(URI.create(BASE_URL + "/validate?bestPractice=Ignore&profile=http%3A%2F%2Fhl7.org%2Ffhir%2Fus%2Fcore%2FStructureDefinition%2Fus-core-patient"))
         .POST(HttpRequest.BodyPublishers.ofString(SAMPLE_PATIENT_JSON))
         .header("Content-Type", "application/fhir+json")
         .build();
@@ -429,7 +429,7 @@ class FhirValidatorHttpServiceTest {
       setUpService(getValidationEngine());
 
       HttpRequest request = HttpRequest.newBuilder()
-        .uri(URI.create(BASE_URL + "/validateResource?" +
+        .uri(URI.create(BASE_URL + "/validate?" +
           "&resourceIdRule=PROHIBITED" +
           "&bestPractice=Ignore" +
           "&checkDisplay=CheckCaseAndSpace"))
@@ -705,7 +705,7 @@ class FhirValidatorHttpServiceTest {
       String body = "{ \"ig\": \"hl7.fhir.us.core#5.0.1\" }";
 
       HttpRequest request = HttpRequest.newBuilder()
-        .uri(URI.create(BASE_URL + "/loadIG"))
+        .uri(URI.create(BASE_URL + "/loadIg"))
         .POST(HttpRequest.BodyPublishers.ofString(body))
         .header("Content-Type", "application/json")
         .header("Accept", "application/fhir+json")
@@ -719,7 +719,7 @@ class FhirValidatorHttpServiceTest {
       // Now validate against the loaded profile - it should be available
       String profilesParam = "http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient";
       HttpRequest validateRequest = HttpRequest.newBuilder()
-        .uri(URI.create(BASE_URL + "/validateResource?profile=" + java.net.URLEncoder.encode(profilesParam, "UTF-8")))
+        .uri(URI.create(BASE_URL + "/validate?profile=" + java.net.URLEncoder.encode(profilesParam, "UTF-8")))
         .POST(HttpRequest.BodyPublishers.ofString(SAMPLE_PATIENT_JSON))
         .header("Content-Type", "application/fhir+json")
         .build();
@@ -740,7 +740,7 @@ class FhirValidatorHttpServiceTest {
       String body = "{ }";
 
       HttpRequest request = HttpRequest.newBuilder()
-        .uri(URI.create(BASE_URL + "/loadIG"))
+        .uri(URI.create(BASE_URL + "/loadIg"))
         .POST(HttpRequest.BodyPublishers.ofString(body))
         .header("Content-Type", "application/json")
         .build();
@@ -759,7 +759,7 @@ class FhirValidatorHttpServiceTest {
       String body = "{ \"ig\": \"nonexistent.package#99.99.99\" }";
 
       HttpRequest request = HttpRequest.newBuilder()
-        .uri(URI.create(BASE_URL + "/loadIG"))
+        .uri(URI.create(BASE_URL + "/loadIg"))
         .POST(HttpRequest.BodyPublishers.ofString(body))
         .header("Content-Type", "application/json")
         .build();
@@ -776,7 +776,7 @@ class FhirValidatorHttpServiceTest {
       setUpService(getValidationEngine());
 
       HttpRequest request = HttpRequest.newBuilder()
-        .uri(URI.create(BASE_URL + "/loadIG"))
+        .uri(URI.create(BASE_URL + "/loadIg"))
         .GET()
         .build();
 
@@ -1055,7 +1055,7 @@ class FhirValidatorHttpServiceTest {
       assertEquals(200, response.statusCode());
       assertTrue(response.headers().firstValue("Content-Type").orElse("").contains("application/json"));
       assertTrue(response.body().contains("\"openapi\""));
-      assertTrue(response.body().contains("/validateResource"));
+      assertTrue(response.body().contains("/validate"));
       assertTrue(response.body().contains("/fhirpath"));
       assertTrue(response.body().contains("/convert"));
       assertTrue(response.body().contains("/snapshot"));
@@ -1107,7 +1107,7 @@ class FhirValidatorHttpServiceTest {
       setUpService(getValidationEngine());
 
       HttpRequest request = HttpRequest.newBuilder()
-        .uri(URI.create(BASE_URL + "/validateResource" +
+        .uri(URI.create(BASE_URL + "/validate" +
           "?resourceIdRule=INVALID" +
           "&bestPractice=INVALID" +
           "&checkDisplay=INVALID"))

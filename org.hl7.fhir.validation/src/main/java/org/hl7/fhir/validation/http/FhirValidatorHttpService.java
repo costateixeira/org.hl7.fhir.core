@@ -44,11 +44,11 @@ public class FhirValidatorHttpService {
     }
     server = HttpServer.create(inetSocketAddress, 0);
 
-    server.createContext("/validateResource", new ValidateResourceHTTPHandler(this));
+    server.createContext("/validate", new ValidateResourceHTTPHandler(this));
     server.createContext("/fhirpath", new FhirPathHTTPHandler(this));
     server.createContext("/matchetype", new MatchetypeHTTPHandler(this));
     server.createContext("/testdata", new TestDataHTTPHandler(this));
-    server.createContext("/loadIG", new LoadIGHTTPHandler(this));
+    server.createContext("/loadIg", new LoadIGHTTPHandler(this));
     server.createContext("/convert", new ConvertHTTPHandler(this));
     server.createContext("/snapshot", new SnapshotHTTPHandler(this));
     server.createContext("/narrative", new NarrativeHTTPHandler(this));
@@ -60,6 +60,14 @@ public class FhirValidatorHttpService {
     server.createContext("/redoc", new DocsHTTPHandler(DocsHTTPHandler.REDOC_HTML));
     server.createContext("/txTest", new TxTestHTTPHandler(this));
     server.createContext("/stop", new StopHTTPHandler(this));
+
+    // GITB-aligned wrappers for ITB integration (see ITB_REST_SPEC.md and gitb-openapi.json).
+    // Each handler exposes GET <prefix>/definition and POST <prefix>/process.
+    server.createContext("/itb/fhir", new GitbFhirHandler(this));
+    server.createContext("/itb/fhirpath", new GitbFhirPathHandler(this));
+    server.createContext("/itb/matchetype", new GitbMatchetypeHandler(this));
+    server.createContext("/itb/testdata", new GitbTestDataHandler(this));
+    server.createContext("/itb/validationResults", new GitbValidationResultsHandler(this));
 
     // Start the server
     server.setExecutor(null); // Use default executor

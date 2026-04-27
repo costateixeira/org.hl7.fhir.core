@@ -49,7 +49,7 @@ Plus one non-GITB affordance:
 ### 2.1 Base URL and endpoint shape
 
 All services are hosted under a single origin, e.g.
-`http://localhost:8080/api`. Each service exposes two endpoints:
+`http://localhost:8080/itb`. Each service exposes two endpoints:
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -324,7 +324,7 @@ post-process the TAR with `ValidationResultsProcessor` or with a
 ### 3.3 `validate` — example request
 
 ```json
-POST /api/fhir/process
+POST /itb/fhir/process
 {
   "operation": "validate",
   "inputs": {
@@ -464,7 +464,7 @@ is expected to evaluate to a Boolean and the operation reports
 #### Examples
 
 ```json
-POST /api/fhirpath/process
+POST /itb/fhirpath/process
 {
   "operation": "evaluate",
   "inputs": {
@@ -477,7 +477,7 @@ POST /api/fhirpath/process
 ```
 
 ```json
-POST /api/fhirpath/process
+POST /itb/fhirpath/process
 {
   "operation": "assert",
   "inputs": {
@@ -510,7 +510,7 @@ POST /api/fhirpath/process
 #### Example
 
 ```json
-POST /api/matchetype/process
+POST /itb/matchetype/process
 {
   "operation": "compare",
   "inputs": {
