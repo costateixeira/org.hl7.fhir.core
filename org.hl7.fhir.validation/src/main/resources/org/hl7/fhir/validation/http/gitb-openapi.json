@@ -146,11 +146,88 @@
         },
         "responses": {
           "200": {
-            "description": "Result",
+            "description": "Validation result. The body is a `ValidationResponse` carrying both a flat summary and a full TAR report with context items. `loadIG` returns a plain `ProcessResponse` shape (no TAR).",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ProcessResponse" },
-                "example": { "result": "SUCCESS", "output": { "outcome": "{\"resourceType\":\"OperationOutcome\",...}", "severity": "information", "errors": "0", "warnings": "0" } }
+                "schema": { "$ref": "#/components/schemas/ValidationResponse" },
+                "examples": {
+                  "validateClean": {
+                    "summary": "Successful validation, content echoed in report context",
+                    "value": {
+                      "result": "SUCCESS",
+                      "output": { "outcome": "{\"resourceType\":\"OperationOutcome\",\"issue\":[]}", "severity": "information", "errors": "0", "warnings": "0" },
+                      "report": {
+                        "id": "5b9b5e0c-2e2e-4c1b-9d6f-1f9c4f3a1abc",
+                        "date": "2026-04-27T12:00:00Z",
+                        "result": "SUCCESS",
+                        "counters": { "nrOfErrors": 0, "nrOfWarnings": 0, "nrOfAssertions": 0 },
+                        "overview": { "name": "HL7 FHIR Validator", "version": "6.9.8-SNAPSHOT" },
+                        "items": [],
+                        "context": [
+                          {
+                            "name": "operationOutcome",
+                            "value": "{\"resourceType\":\"OperationOutcome\",\"issue\":[]}",
+                            "embeddingMethod": "STRING",
+                            "type": "string",
+                            "mimeType": "application/fhir+json",
+                            "forContext": true,
+                            "forReport": true
+                          },
+                          {
+                            "name": "content",
+                            "value": "{\"resourceType\":\"Patient\",\"name\":[{\"family\":\"Smith\"}]}",
+                            "embeddingMethod": "STRING",
+                            "type": "string",
+                            "mimeType": "application/fhir+json",
+                            "forContext": true,
+                            "forReport": true
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "validateWithError": {
+                    "summary": "Validation finds a line-anchored error",
+                    "value": {
+                      "result": "FAILURE",
+                      "output": { "outcome": "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"invalid\",\"details\":{\"text\":\"Patient.name.family is required\"}}]}", "severity": "error", "errors": "1", "warnings": "0" },
+                      "report": {
+                        "id": "8c1d2c4a-9d6f-4f1b-92e1-3c2a1f9b1def",
+                        "date": "2026-04-27T12:00:00Z",
+                        "result": "FAILURE",
+                        "counters": { "nrOfErrors": 1, "nrOfWarnings": 0, "nrOfAssertions": 0 },
+                        "overview": { "name": "HL7 FHIR Validator", "version": "6.9.8-SNAPSHOT" },
+                        "items": [
+                          { "level": "ERROR", "description": "Patient.name.family is required", "location": "content:3:5", "type": "invalid" }
+                        ],
+                        "context": [
+                          {
+                            "name": "operationOutcome",
+                            "value": "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"invalid\",\"details\":{\"text\":\"Patient.name.family is required\"}}]}",
+                            "embeddingMethod": "STRING",
+                            "type": "string",
+                            "mimeType": "application/fhir+json",
+                            "forContext": true,
+                            "forReport": true
+                          },
+                          {
+                            "name": "content",
+                            "value": "{\n  \"resourceType\": \"Patient\",\n  \"name\": [{}]\n}",
+                            "embeddingMethod": "STRING",
+                            "type": "string",
+                            "mimeType": "application/fhir+json",
+                            "forContext": true,
+                            "forReport": true
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "loadIG": {
+                    "summary": "loadIG (no TAR)",
+                    "value": { "result": "SUCCESS", "output": { "loaded": "hl7.fhir.be.core#2.1.2" } }
+                  }
+                }
               }
             }
           }
@@ -333,6 +410,103 @@
           "result": { "type": "string", "enum": ["SUCCESS", "FAILURE"], "description": "Whether the operation succeeded" },
           "output": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Output parameters as string key-value pairs" },
           "error": { "type": "string", "description": "Error message (only when result is FAILURE)" }
+        }
+      },
+      "EmbeddingMethod": {
+        "type": "string",
+        "enum": ["STRING", "BASE_64", "URI"],
+        "description": "How the value of an AnyContent item is encoded. STRING = raw text. BASE_64 = base64-encoded bytes. URI = a URL the server fetches (subject to SSRF allowlist)."
+      },
+      "AnyContent": {
+        "type": "object",
+        "description": "GITB AnyContent wrapper for typed payloads carried in TAR context items. Used by the ITB to render values alongside report findings.",
+        "required": ["name", "value", "embeddingMethod"],
+        "properties": {
+          "name": { "type": "string", "description": "Logical name of the item, e.g. `content`, `operationOutcome`, `fetchInfo`." },
+          "value": { "type": "string", "description": "The payload, encoded according to `embeddingMethod`." },
+          "embeddingMethod": { "$ref": "#/components/schemas/EmbeddingMethod" },
+          "type": { "type": "string", "description": "GITB simple type — typically `string`.", "default": "string" },
+          "mimeType": { "type": "string", "description": "MIME type of `value`. Used by the test engine to pick a renderer (JSON viewer, XML viewer, …). Set by the service on outputs; ignored on inputs." },
+          "encoding": { "type": "string", "description": "Character encoding of `value` (when textual).", "default": "UTF-8" },
+          "forContext": { "type": "boolean", "description": "Include this item in the report's context (data the report refers to).", "default": true },
+          "forReport": { "type": "boolean", "description": "Show this item in the report itself.", "default": true }
+        }
+      },
+      "LevelType": {
+        "type": "string",
+        "enum": ["ERROR", "WARNING", "INFO"],
+        "description": "Severity level of a TAR report item."
+      },
+      "TestResultType": {
+        "type": "string",
+        "enum": ["SUCCESS", "FAILURE", "WARNING", "UNDEFINED"],
+        "description": "Aggregate validation result. `UNDEFINED` means the engine could not produce a definitive verdict (e.g. parse failure)."
+      },
+      "ValidationCounters": {
+        "type": "object",
+        "description": "Aggregate issue counts.",
+        "properties": {
+          "nrOfErrors": { "type": "integer", "minimum": 0 },
+          "nrOfWarnings": { "type": "integer", "minimum": 0 },
+          "nrOfAssertions": { "type": "integer", "minimum": 0, "description": "Information-level findings." }
+        }
+      },
+      "ValidationOverview": {
+        "type": "object",
+        "description": "Summary metadata for the validation run.",
+        "properties": {
+          "name": { "type": "string", "description": "Human-readable validator name." },
+          "version": { "type": "string", "description": "Validation engine version." },
+          "note": { "type": "string", "description": "Free-form note. Echoes the test session id when supplied via `Gitb-Test-Session-Identifier`." },
+          "profileID": { "type": "string", "description": "Profile (or main profile) the resource was validated against." }
+        }
+      },
+      "ReportItem": {
+        "type": "object",
+        "description": "A single finding in a TAR report.",
+        "required": ["level", "description"],
+        "properties": {
+          "level": { "$ref": "#/components/schemas/LevelType" },
+          "description": { "type": "string", "description": "Human-readable issue text. Mapped from `OperationOutcome.issue.details.text`." },
+          "location": { "type": "string", "description": "Where the issue applies. Either a JSON path (e.g. `Patient.name[0].family`) or, when line-anchored, `content:<line>:<col>` — referring to the AnyContent item named `content` in the report context. The latter form lets the ITB jump to the line in its inline editor." },
+          "type": { "type": "string", "description": "Issue category, mapped from `OperationOutcome.issue.code`." },
+          "value": { "type": "string", "description": "Engine diagnostics, when available." },
+          "assertionID": { "type": "string", "description": "Rule/invariant identifier when the finding is tied to a named rule." }
+        }
+      },
+      "TAR": {
+        "type": "object",
+        "description": "GITB Test Assertion Report. Returned by validation services in place of a flat output map.",
+        "properties": {
+          "id": { "type": "string", "format": "uuid", "description": "Fresh UUID per call (distinct from `sessionId`)." },
+          "date": { "type": "string", "format": "date-time", "description": "Server UTC timestamp." },
+          "result": { "$ref": "#/components/schemas/TestResultType" },
+          "counters": { "$ref": "#/components/schemas/ValidationCounters" },
+          "overview": { "$ref": "#/components/schemas/ValidationOverview" },
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ReportItem" },
+            "description": "Per-issue findings."
+          },
+          "context": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/AnyContent" },
+            "description": "Context items the report refers to. Always includes an `operationOutcome` AnyContent carrying the raw FHIR OperationOutcome JSON. When `inputs.includeContentInReport` is `true` (default), also includes a `content` AnyContent carrying the validated payload — this enables ITB inline rendering and line-anchored locations of the form `content:<line>:<col>`."
+          }
+        }
+      },
+      "ValidationResponse": {
+        "type": "object",
+        "description": "Validation service response. `output` is the flat convenience summary (counts and severity) for callers that only need a quick read; `report` carries the full TAR with findings and context.",
+        "properties": {
+          "result": { "$ref": "#/components/schemas/TestResultType" },
+          "output": {
+            "type": "object",
+            "additionalProperties": { "type": "string" },
+            "description": "Flat string map: `errors` (count), `warnings` (count), `severity` (highest seen), `outcome` (raw OperationOutcome JSON). Same data also present in `report.counters` and `report.context`."
+          },
+          "report": { "$ref": "#/components/schemas/TAR" },
+          "error": { "type": "string", "description": "Error message (only when `result` is `FAILURE` due to an infrastructure error, not a validation failure)." }
         }
       }
     }
