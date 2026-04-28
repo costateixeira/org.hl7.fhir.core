@@ -349,7 +349,7 @@ public class POGenerator {
     markDuplicatePOObjects(poObjects);
     noTrans = poObjects.savePOFile(Utilities.path(sourceDirectory, "source", poFileName), count, noTrans);
     if (targetPropertiesFileName != null) {
-      savePropertiesFile(Utilities.path(sourceDirectory, targetPropertiesFileName), poObjects.getPOObjects());
+      savePropertiesFile(Utilities.path(sourceDirectory, targetPropertiesFileName), poObjects.getPOObjects(), propertiesFileName, count);
     }
   }
 
@@ -447,8 +447,15 @@ public class POGenerator {
     return res;
   }
 
-  private void savePropertiesFile(String tgt, List<POObject> objects) throws IOException {
-    String nameLine = FileUtilities.fileToLines(tgt).get(0);
+  private void savePropertiesFile(String tgt, List<POObject> objects, String sourcePropertiesFileName, int pluralCount) throws IOException {
+    String nameLine;
+    if (ManagedFileAccess.file(tgt).exists()) {
+      nameLine = FileUtilities.fileToLines(tgt).get(0);
+    } else {
+      // First-time generation for this language: synthesize the header from the source
+      // file name and the language's plural count so the user does not have to seed it.
+      nameLine = defaultHeaderLine(sourcePropertiesFileName, pluralCount);
+    }
     String[] parts = nameLine.substring(1).trim().split("\\=");
     String[] names = parts[1].split("\\,");
     
@@ -479,5 +486,49 @@ public class POGenerator {
     FileUtilities.stringToFile(b.toString(), tgt);
   }
 
-  
+  /**
+   * Synthesize the first-line header for a brand-new language properties file.
+   * Format is {@code # &lt;Category&gt; = name1,name2,...,nameN} where N is the
+   * language's plural count (taken from {@code translations-control.ini}).
+   * The user can override the names later by editing the seeded file.
+   */
+  private static String defaultHeaderLine(String sourcePropertiesFileName, int pluralCount) {
+    String category;
+    String src = sourcePropertiesFileName == null ? "" : sourcePropertiesFileName.toLowerCase();
+    if (src.contains("messages")) {
+      category = "InstanceValidator";
+    } else if (src.contains("rendering-phrases")) {
+      category = "Rendering";
+    } else {
+      category = "Translation";
+    }
+    StringBuilder names = new StringBuilder();
+    String[] forms = pluralForms(pluralCount);
+    for (int i = 0; i < forms.length; i++) {
+      if (i > 0) names.append(",");
+      names.append(forms[i]);
+    }
+    return "# " + category + " = " + names;
+  }
+
+  /**
+   * CLDR-ish default plural form names for the given count. Used only as a seed
+   * for first-time language generation; translators are free to rename them.
+   */
+  private static String[] pluralForms(int count) {
+    switch (count) {
+      case 1: return new String[]{"other"};
+      case 2: return new String[]{"one", "other"};
+      case 3: return new String[]{"one", "few", "many"};
+      case 4: return new String[]{"one", "two", "few", "many"};
+      case 5: return new String[]{"one", "two", "few", "many", "other"};
+      case 6: return new String[]{"zero", "one", "two", "few", "many", "other"};
+      default:
+        String[] arr = new String[Math.max(count, 1)];
+        for (int i = 0; i < arr.length; i++) {
+          arr[i] = "form" + (i + 1);
+        }
+        return arr;
+    }
+  }
 }

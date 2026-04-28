@@ -1178,7 +1178,6 @@ public class RenderingI18nContext extends I18nBase {
   public static final String CONSENT_BASIS_REGULATION_NONE = "CONSENT_BASIS_REGULATION_NONE";
   public static final String CONSENT_BASIS_POLICY_PREFIX = "CONSENT_BASIS_POLICY_PREFIX";
   public static final String CONSENT_BASIS_POLICY_SUFFIX = "CONSENT_BASIS_POLICY_SUFFIX";
-  public static final String CONSENT_BASIS_POLICY_SUFFIX_MORE = "CONSENT_BASIS_POLICY_SUFFIX_MORE";
   public static final String CONSENT_HTABLE_RULE = "CONSENT_HTABLE_RULE";
   public static final String CONSENT_HTABLE_RULE_DESC = "CONSENT_HTABLE_RULE_DESC";
   public static final String CONSENT_HTABLE_WHEN = "CONSENT_HTABLE_WHEN";
@@ -1204,6 +1203,11 @@ public class RenderingI18nContext extends I18nBase {
   public static final String CONSENT_HT_DOC_TYPE = "CONSENT_HT_DOC_TYPE";
   public static final String CONSENT_HT_CODE = "CONSENT_HT_CODE";
   public static final String STRUC_DEF_TYPE_CHARACTERISTICS = "STRUC_DEF_TYPE_CHARACTERISTICS";
+
+  public static final String WEB_SOURCE = "WEB_SOURCE";
+  public static final String GENERAL_COPY = "GENERAL_COPY";
+  public static final String CODESYSTEM_LVL = "CODESYSTEM_LVL";
+  public static final String FEATURE = "FEATURE";
 
   protected String getMessagesSourceFileName() {
     return "rendering-phrases";

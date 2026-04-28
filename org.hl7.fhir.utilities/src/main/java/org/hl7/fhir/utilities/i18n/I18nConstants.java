@@ -1503,4 +1503,15 @@ public class I18nConstants {
   public static final String TYPE_SPECIFIC_CHECKS_DT_QTY_GT_MIN = "TYPE_SPECIFIC_CHECKS_DT_QTY_GT_MIN";
   public static final String TYPE_SPECIFIC_CHECKS_DT_QTY_GT_MAX = "TYPE_SPECIFIC_CHECKS_DT_QTY_GT_MAX";
   public static final String REGEX_MATCH_TIMED_OUT = "REGEX_MATCH_TIMED_OUT";
+  public static final String CODESYSTEM_TOO_COSTLY_TIME = "CODESYSTEM_TOO_COSTLY_TIME";
+  public static final String DISPLAY_NAME_NOT_FIXED_USE_SUPPLEMENT = "Display_Name_Not_Fixed_use_Supplement";
+  public static final String FILTER_NOT_UNDERSTOOD = "FILTER_NOT_UNDERSTOOD";
+  public static final String INVALID_ECL = "INVALID_ECL";
+  public static final String INVALID_REGEX = "INVALID_REGEX";
+  public static final String NO_VALID_DISPLAY_AT_ALL = "NO_VALID_DISPLAY_AT_ALL";
+  public static final String REQUEST_TOO_COSTLY_TIME = "REQUEST_TOO_COSTLY_TIME";
+  public static final String SCT_NO_MRCM = "SCT_NO_MRCM";
+  public static final String TX_SERVER_NOT_READY = "TX_SERVER_NOT_READY";
+  public static final String UNSUPPORTED_ECL = "UNSUPPORTED_ECL";
+  public static final String WRONG_TYPE_FOR_RESOURCE_EXPECTED = "Wrong_type_for_resource_expected";
 }
