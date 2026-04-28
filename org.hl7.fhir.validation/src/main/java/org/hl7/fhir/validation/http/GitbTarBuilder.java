@@ -10,33 +10,31 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Builds GITB Test Assertion Report (TAR) JSON for the FHIRValidator service.
+ * Builds GITB Test Assertion Report (TAR) JSON for the validator's validation
+ * services (FHIRValidator, MatchetypeValidator, FHIRPathAssertion).
  * <p>
- * Maps FHIR {@link OperationOutcome} into the TAR shape defined in
- * {@code gitb-openapi.json} ({@code components.schemas.TAR}), and assembles
- * the surrounding {@code ValidationResponse} ({@code result}, {@code output},
- * {@code report}, {@code error}).
- * <p>
- * The mapping is documented in §2.8 of {@code ITB_REST_SPEC.md}.
+ * Methods here return a TAR {@link JsonObject} ({@code {id, date, result,
+ * counters, overview, items[], context[]}}); the base handler wraps it in
+ * {@code {report: ...}} per the GITB ValidationResponse shape.
  */
 final class GitbTarBuilder {
 
-  private static final String VALIDATOR_NAME = "HL7 FHIR Validator";
+  static final String VALIDATOR_NAME = "HL7 FHIR Validator";
 
   private GitbTarBuilder() {}
 
   /**
-   * Build a {@code ValidationResponse} for a successful validation run.
+   * Build a TAR for a successful FHIR validation run.
    *
-   * @param outcome  the FHIR OperationOutcome produced by the engine
-   * @param outcomeJson the OperationOutcome serialised to FHIR+JSON (echoed in output and TAR context)
-   * @param content  the validated payload, as the caller sent it; non-null only when includeContentInReport=true
-   * @param contentMime the MIME type of {@code content} (matches inputs.contentType)
-   * @param failOn   severity threshold: {@code error}|{@code warning}|{@code information}
-   * @param sessionId optional Gitb-Test-Session-Identifier; copied to overview.note
-   * @param engineVersion the validator version, copied to overview.version
+   * @param outcome      the FHIR OperationOutcome produced by the engine
+   * @param outcomeJson  the OperationOutcome serialised to FHIR+JSON (echoed in {@code context})
+   * @param content      the validated payload (when {@code includeContentInReport} is true; null otherwise)
+   * @param contentMime  MIME type of {@code content} (defaults to {@code application/fhir+json} when null)
+   * @param failOn       severity threshold: {@code error}|{@code warning}|{@code information}
+   * @param sessionId    optional Gitb-Test-Session-Identifier; copied to {@code overview.note}
+   * @param engineVersion validator version, copied to {@code overview.version}
    */
-  static JsonObject validationResponse(OperationOutcome outcome,
+  static JsonObject buildValidationTar(OperationOutcome outcome,
                                        String outcomeJson,
                                        String content,
                                        String contentMime,
@@ -46,7 +44,6 @@ final class GitbTarBuilder {
     int errors = 0;
     int warnings = 0;
     int infos = 0;
-    IssueSeverity highest = null;
     JsonArray items = new JsonArray();
 
     for (OperationOutcomeIssueComponent issue : outcome.getIssue()) {
@@ -54,107 +51,88 @@ final class GitbTarBuilder {
       if (sev == IssueSeverity.FATAL || sev == IssueSeverity.ERROR) errors++;
       else if (sev == IssueSeverity.WARNING) warnings++;
       else if (sev == IssueSeverity.INFORMATION) infos++;
-      if (sev != null && (highest == null || severityRank(sev) > severityRank(highest))) {
-        highest = sev;
-      }
       items.add(reportItem(issue));
     }
 
     String tarResult = deriveResult(errors, warnings, infos, failOn);
 
-    JsonObject report = new JsonObject();
-    report.add("id", UUID.randomUUID().toString());
-    report.add("date", Instant.now().toString());
-    report.add("result", tarResult);
-
-    JsonObject counters = new JsonObject();
-    counters.add("nrOfErrors", errors);
-    counters.add("nrOfWarnings", warnings);
-    counters.add("nrOfAssertions", infos);
-    report.add("counters", counters);
-
-    JsonObject overview = new JsonObject();
-    overview.add("name", VALIDATOR_NAME);
-    if (engineVersion != null) overview.add("version", engineVersion);
-    if (sessionId != null && !sessionId.isEmpty()) overview.add("note", "session=" + sessionId);
-    report.add("overview", overview);
-
+    JsonObject report = baseReport(tarResult, sessionId, engineVersion);
+    report.add("counters", counters(errors, warnings, infos));
     report.add("items", items);
 
     JsonArray context = new JsonArray();
-    context.add(anyContent("operationOutcome", outcomeJson, "application/fhir+json"));
+    if (outcomeJson != null) {
+      context.add(GitbServiceHandler.anyContent("operationOutcome", outcomeJson, "application/fhir+json"));
+    }
     if (content != null) {
-      context.add(anyContent("content", content, contentMime != null ? contentMime : "application/fhir+json"));
+      context.add(GitbServiceHandler.anyContent("content", content,
+        contentMime != null ? contentMime : "application/fhir+json"));
     }
     report.add("context", context);
 
-    JsonObject output = new JsonObject();
-    output.add("outcome", outcomeJson);
-    output.add("severity", severityCode(highest));
-    output.add("errors", String.valueOf(errors));
-    output.add("warnings", String.valueOf(warnings));
-
-    JsonObject response = new JsonObject();
-    response.add("result", tarResult);
-    response.add("output", output);
-    response.add("report", report);
-    return response;
+    return report;
   }
 
-  /** Build a TAR-shaped response indicating the engine could not produce an outcome (UNDEFINED). */
-  static JsonObject undefinedResponse(String engineErrorMessage, String sessionId, String engineVersion) {
-    JsonObject report = new JsonObject();
-    report.add("id", UUID.randomUUID().toString());
-    report.add("date", Instant.now().toString());
-    report.add("result", "UNDEFINED");
+  /** TAR for a non-FHIR pass/fail check (e.g. FHIRPathAssertion or matchetype mismatch). */
+  static JsonObject buildSimpleTar(String result, String description, String level,
+                                   JsonArray contextItems, String sessionId, String engineVersion) {
+    JsonObject report = baseReport(result, sessionId, engineVersion);
+    int errors = "FAILURE".equals(result) && "ERROR".equalsIgnoreCase(level) ? 1 : 0;
+    int warnings = "WARNING".equals(result) ? 1 : 0;
+    int infos = "SUCCESS".equals(result) ? 1 : 0;
+    report.add("counters", counters(errors, warnings, infos));
 
-    JsonObject counters = new JsonObject();
-    counters.add("nrOfErrors", 0);
-    counters.add("nrOfWarnings", 0);
-    counters.add("nrOfAssertions", 0);
-    report.add("counters", counters);
+    JsonArray items = new JsonArray();
+    if (description != null) {
+      JsonObject item = new JsonObject();
+      item.add("level", level != null ? level : ("FAILURE".equals(result) ? "ERROR" : "INFO"));
+      item.add("description", description);
+      items.add(item);
+    }
+    report.add("items", items);
+    report.add("context", contextItems != null ? contextItems : new JsonArray());
+    return report;
+  }
 
-    JsonObject overview = new JsonObject();
-    overview.add("name", VALIDATOR_NAME);
-    if (engineVersion != null) overview.add("version", engineVersion);
-    if (sessionId != null && !sessionId.isEmpty()) overview.add("note", "session=" + sessionId);
-    report.add("overview", overview);
+  /** TAR for an engine-level error (parse failure etc.) — UNDEFINED result. */
+  static JsonObject buildUndefinedTar(String engineErrorMessage, String sessionId, String engineVersion) {
+    JsonObject report = baseReport("UNDEFINED", sessionId, engineVersion);
+    report.add("counters", counters(0, 0, 0));
 
     JsonArray items = new JsonArray();
     JsonObject errItem = new JsonObject();
     errItem.add("level", "ERROR");
-    errItem.add("description", engineErrorMessage);
+    errItem.add("description", engineErrorMessage != null ? engineErrorMessage : "Engine error");
     errItem.add("type", "exception");
     items.add(errItem);
     report.add("items", items);
-
     report.add("context", new JsonArray());
-
-    JsonObject output = new JsonObject();
-    output.add("severity", "error");
-    output.add("errors", "0");
-    output.add("warnings", "0");
-
-    JsonObject response = new JsonObject();
-    response.add("result", "UNDEFINED");
-    response.add("output", output);
-    response.add("report", report);
-    response.add("error", engineErrorMessage);
-    return response;
+    return report;
   }
 
-  /** Build a single GITB AnyContent JSON object. */
-  static JsonObject anyContent(String name, String value, String mimeType) {
-    JsonObject a = new JsonObject();
-    a.add("name", name);
-    a.add("value", value == null ? "" : value);
-    a.add("embeddingMethod", "STRING");
-    a.add("type", "string");
-    if (mimeType != null) a.add("mimeType", mimeType);
-    a.add("encoding", "UTF-8");
-    a.add("forContext", true);
-    a.add("forReport", true);
-    return a;
+  // ------------------------------------------------------------------
+  // Internals
+  // ------------------------------------------------------------------
+
+  private static JsonObject baseReport(String result, String sessionId, String engineVersion) {
+    JsonObject report = new JsonObject();
+    report.add("id", UUID.randomUUID().toString());
+    report.add("date", Instant.now().toString());
+    report.add("result", result);
+    JsonObject overview = new JsonObject();
+    overview.add("name", VALIDATOR_NAME);
+    if (engineVersion != null) overview.add("version", engineVersion);
+    if (sessionId != null && !sessionId.isEmpty()) overview.add("note", "session=" + sessionId);
+    report.add("overview", overview);
+    return report;
+  }
+
+  private static JsonObject counters(int errors, int warnings, int infos) {
+    JsonObject c = new JsonObject();
+    c.add("nrOfErrors", errors);
+    c.add("nrOfWarnings", warnings);
+    c.add("nrOfAssertions", infos);
+    return c;
   }
 
   private static JsonObject reportItem(OperationOutcomeIssueComponent issue) {
@@ -203,27 +181,6 @@ final class GitbTarBuilder {
       case INFORMATION:
       default:
         return "INFO";
-    }
-  }
-
-  private static int severityRank(IssueSeverity sev) {
-    switch (sev) {
-      case FATAL: return 4;
-      case ERROR: return 3;
-      case WARNING: return 2;
-      case INFORMATION: return 1;
-      default: return 0;
-    }
-  }
-
-  private static String severityCode(IssueSeverity sev) {
-    if (sev == null) return "information";
-    switch (sev) {
-      case FATAL: return "fatal";
-      case ERROR: return "error";
-      case WARNING: return "warning";
-      case INFORMATION: return "information";
-      default: return "information";
     }
   }
 

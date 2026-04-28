@@ -1,675 +1,371 @@
 # FHIR Validator — GITB REST Services Specification
 
-**Status**: Draft, revised post-review (2026-04-27).
-**Target contract**: [gitb-types](https://github.com/ISAITB/gitb-types) `development` branch
- — `rest/gitb_vs.json` (validation service) and `rest/gitb_ps.json` (processing service).
-**Scope**: Add a new set of GITB-aligned REST handlers in
-`org.hl7.fhir.validation/src/main/java/org/hl7/fhir/validation/http/`,
-exposing five services under a unified `/<svc>/{definition,process}`
-endpoint shape. The existing flat native HTTP handlers
-(`/fhirpath`, `/validateResource`, …) remain.
-**Companion**: [gitb-openapi.json](org.hl7.fhir.validation/src/main/resources/org/hl7/fhir/validation/http/gitb-openapi.json)
-is the authoritative machine-readable spec; this document is the
-narrative/rationale companion. When they disagree, the OpenAPI is the
-implementation contract.
+**Status**: Draft, revised post-review (2026-04-28).
+**Target contract**: [gitb-types](https://github.com/ISAITB/gitb-types) — `gitb_vs.xsd` (Validation Service) and `gitb_ps.xsd` (Processing Service).
+**Scope**: GITB-faithful REST handlers in `org.hl7.fhir.validation/src/main/java/org/hl7/fhir/validation/http/`, exposed under `/itb/...`. The existing flat native handlers (`/fhirpath`, `/validate`, …) remain available alongside.
+**Companion**: [gitb-openapi.json](org.hl7.fhir.validation/src/main/resources/org/hl7/fhir/validation/http/gitb-openapi.json) is the authoritative machine-readable spec. When this document and the OpenAPI disagree, the OpenAPI is the implementation contract.
 
 ---
 
 ## 1. TL;DR
 
-The FHIR Validator exposes **five GITB-compliant REST services** at a single
-HTTP endpoint, split across the two GITB REST contracts. One operator
-deploys the validator as a long-running HTTP server; IGs loaded into the
-process memory persist for the life of the server.
+The validator exposes **seven GITB REST services** under `/itb/`:
 
-| Service | Contract | Path prefix | Operations | Purpose |
-|---|---|---|---|---|
-| `FHIRValidator` | validation | `/fhir` | `validate`, `loadIG` | Validate a FHIR resource against profiles/IGs; load an IG package |
-| `MatchetypeProcessor` | processing | `/matchetype` | `compare` | Compare a resource against an expected pattern |
-| `FHIRPathProcessor` | processing | `/fhirpath` | `evaluate`, `assert` | Evaluate any FHIRPath expression, return result; or assert a Boolean invariant |
-| `TestDataGenerator` | processing | `/testdata` | `generate`, `generateBundle` | Synthesise resources from a profile |
-| `ValidationResultsProcessor` | processing | `/validationResults` | `summarize`, `filterBySeverity`, `filterByText` | Filter / summarise a prior `OperationOutcome` |
+| Service | Kind | Path prefix | Operations |
+|---|---|---|---|
+| `FHIRValidator`           | Validation | `/itb/fhir`              | `validate` |
+| `MatchetypeValidator`     | Validation | `/itb/matchetype`        | `validate` |
+| `FHIRPathAssertion`       | Validation | `/itb/fhirpathAssertion` | `validate` |
+| `FHIRPathProcessor`       | Processing | `/itb/fhirpath`          | `evaluate` |
+| `TestDataGenerator`       | Processing | `/itb/testdata`          | `generate`, `generateBundle` |
+| `ValidationResultsProcessor` | Processing | `/itb/validationResults` | `summarize`, `filterBySeverity`, `filterByText` |
+| `IGManager`               | Processing | `/itb/igmanager`         | `loadIG` |
 
-Plus one non-GITB affordance:
+Per the GITB contract, each kind has a fixed sub-path scheme — the **handler URI is the service root**, and ITB knows the operation names from the contract:
 
-| Path | Purpose |
+| Kind | Sub-paths the ITB calls |
 |---|---|
-| `GET /openapi.json` | Unified OpenAPI overlay describing all five services with FHIR-specific input names and examples |
+| Validation Service | `GET /<svc>/getModuleDefinition`, `POST /<svc>/validate` |
+| Processing Service | `GET /<svc>/getModuleDefinition`, `POST /<svc>/process`, `POST /<svc>/beginTransaction`, `POST /<svc>/endTransaction` |
 
-> **Note on naming.** The path prefix for the FHIR validation service is
-> `/fhir` (not `/validator`) — symmetric with `/matchetype`, `/fhirpath`,
-> `/testdata`, `/validationResults`. All path segments use lower-camelCase
-> for multi-word names (e.g. `validationResults`), matching the convention
-> used by ITB built-in service operations (`getModuleDefinition`).
+A separate `GET /openapi.json` serves the OpenAPI overlay describing all services — purely informational; the GITB contract is what ITB calls.
 
 ---
 
 ## 2. Common conventions
 
-### 2.1 Base URL and endpoint shape
+### 2.1 Base URL and dispatch
 
-All services are hosted under a single origin, e.g.
-`http://localhost:8080/itb`. Each service exposes two endpoints:
-
-| Method | Path | Purpose |
-|---|---|---|
-| `GET` | `/<service>/definition` | Returns the GITB `ServiceDefinition` (operations, inputs, outputs). |
-| `POST` | `/<service>/process` | Executes one operation. Body: `{ "operation": "<name>", "inputs": { … } }`. |
-
-This collapses the contract-specific endpoint shapes (`validate`,
-`process`, `beginTransaction`, …) into a single `process` endpoint per
-service, with the operation selected by the request body. The
-`getModuleDefinition` shape from the upstream GITB REST contracts is
-served as `GET /<service>/definition`.
+Services are hosted under a single origin, e.g. `http://localhost:8080`. The handler URI registered for a service is its root (e.g. `/itb/fhir`); the ITB framework appends the GITB sub-path (`getModuleDefinition`, `validate`, `process`, `beginTransaction`, `endTransaction`) per the service's contract.
 
 ### 2.2 Wire format
 
-All requests and responses are `application/json`. Nothing SOAP.
+JSON in, JSON out. `Content-Type: application/json` on all requests.
 
 ### 2.3 GITB headers
 
-Every call (validation or processing) MAY include the five optional GITB
-headers. The FHIR validator reads them for logging and context; it does
-not invoke callbacks, so `Gitb-Reply-To` is recorded but never used.
+Every call MAY include the five optional GITB headers:
 
 | Header | Purpose |
 |---|---|
-| `Gitb-Reply-To` | Test engine callback root (not used, logged only) |
-| `Gitb-Test-Session-Identifier` | Test session id — logged, echoed into TAR `overview.note` |
+| `Gitb-Reply-To` | Test engine callback root (logged only — no callbacks are emitted) |
+| `Gitb-Test-Session-Identifier` | Test session id — copied to TAR `overview.note` |
 | `Gitb-Test-Case-Identifier` | Test case id — logged |
 | `Gitb-Test-Step-Identifier` | Test step id — logged |
 | `Gitb-Test-Engine-Version` | Test engine version — logged |
 
-### 2.4 Input shape and `AnyContent`
+### 2.4 `AnyContent` — the input/output unit
 
-**Inputs** are a flat string-keyed JSON object — no `AnyContent` wrapper:
+Inputs and outputs are arrays of `AnyContent` items. Shape:
 
 ```json
 {
-  "operation": "validate",
-  "inputs": {
-    "content": "<FHIR resource as a string>",
-    "contentType": "application/fhir+json",
-    "profiles": "http://hl7.org/fhir/StructureDefinition/Patient"
-  }
+  "name": "contentToValidate",
+  "value": "<payload>",
+  "embeddingMethod": "STRING",
+  "type": "string",
+  "mimeType": "application/fhir+json",
+  "encoding": "UTF-8"
 }
 ```
 
-This is a deliberate simplification of the GITB on-the-wire shape, which
-uses `AnyContent` (with `embeddingMethod`, `mimeType`, `encoding`, …) for
-both inputs and outputs. The simplification is driven by ITB review
-feedback: properties like `mimeType` are ambiguous on inputs (they're
-really output-rendering hints), so on the REST surface the validator
-takes plain string inputs and any format choice that mattered is exposed
-as a separate input (e.g. `contentType` on `FHIRValidator.validate`).
-Where format affects how the server interprets the input, the input is
-named explicitly, and is optional with a sensible default.
+`embeddingMethod` controls how `value` is interpreted:
 
-**Outputs** keep the full `AnyContent` shape, but only inside the TAR
-report context. See §2.8.
+- `STRING` — `value` is the raw text content (default).
+- `BASE_64` — `value` is base64-encoded bytes (use for binary or very-large content).
+- `URI` — `value` is a URL the server SHALL fetch. Subject to the SSRF policy in §2.4.1. Disabled when the validator is started with `-disable-uri-fetch`.
 
-For inputs that need to carry binary content or be fetched from a URL,
-the server accepts a `data:` URL or HTTP(S) URL inside the string value
-(behavior is opt-in per service); fetched URLs are subject to the
-SSRF-hardened policy in §2.4.1.
+Outputs (in `output[]` of `ProcessResponse`, or in `report.context[]` of TAR) carry additional rendering hints used by the ITB UI:
 
-### 2.4.1 SSRF-hardened URL fetch (when enabled)
+- `mimeType` — choose a viewer (JSON viewer, XML viewer, …).
+- `forContext` — include in the report's context (referred-to data).
+- `forReport` — show in the report itself.
 
-When a service accepts a URL as an input value, the server fetches it
-with the following sanitization rules:
+Nested AnyContent is supported via the `item` array property — used for outputs like the (future) `IGManager.listIGs` where each loaded IG is itself an AnyContent collection.
 
-- **Scheme allowlist**: only `http` and `https`. All others (`file`,
-  `ftp`, `gopher`, `ssh`, `jar`, `data`, …) are rejected with a 400.
-- **Private-address denylist**: the hostname is DNS-resolved before
-  fetch, and the resulting IP is checked against:
-  - Loopback: `127.0.0.0/8`, `::1`
-  - Link-local: `169.254.0.0/16`, `fe80::/10`
-  - Private ranges: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`,
-    `fc00::/7`
-  - Multicast / unspecified: `0.0.0.0/8`, `224.0.0.0/4`, `::/128`
+### 2.4.1 SSRF-hardened URL fetch (when `embeddingMethod: URI` is enabled)
 
-  Any match is rejected with a 400. The resolved IP is also used for
-  the actual connection (no re-resolution), preventing DNS rebinding.
-- **Redirects**: followed up to 5 hops. Each hop is re-validated by the
-  same allowlist/denylist rules; a redirect to a private address aborts
-  the fetch.
-- **No credential forwarding**: cookies, `Authorization`, and caller
-  headers are never forwarded.
-- **Size cap**: 30 MB. Response is truncated and the fetch fails if the
-  server declares a larger `Content-Length` or streams past the cap.
-- **Timeouts**: 10 s connect, 60 s total read.
-- **Deployment kill-switch**: the `-disable-uri-fetch` CLI flag disables
-  URL fetching entirely. Hardened deployments require inline content
-  only.
+- **Scheme allowlist** — only `http` and `https`.
+- **Private-address denylist** — DNS-resolved IP must not match loopback (`127.0.0.0/8`, `::1`), link-local (`169.254.0.0/16`, `fe80::/10`), private (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`), or multicast/unspecified (`0.0.0.0/8`, `224.0.0.0/4`, `::/128`). Resolved IP is reused for the actual connection (no DNS rebinding).
+- **Redirects** — followed up to 5 hops, each re-validated.
+- **No credential forwarding** — cookies and `Authorization` are dropped.
+- **Size cap** — 30 MB.
+- **Timeouts** — 10 s connect, 60 s total.
+- **Kill-switch** — `-disable-uri-fetch` CLI flag disables URL fetching entirely.
 
-The resolution result (final URL, HTTP status, content length, elapsed
-time) is recorded in the TAR `context` under a `fetchInfo` AnyContent
-item.
+The fetch result (final URL, HTTP status, content length, elapsed time) appears in TAR `context[]` as a `fetchInfo` AnyContent item.
 
-### 2.5 `inputs` only — no `configs`
+### 2.5 No `configs`
 
-The GITB TDL distinguishes inputs and configs (configs were originally
-constants, inputs runtime-supplied). In practice the ITB built-in
-service handlers use inputs for everything because inputs are a strict
-superset — they can be both runtime-supplied and constant, and callers
-don't have to remember the split.
-
-Following ITB review feedback, this validator uses **inputs for
-everything**. There is no `configs` block on any service. Multi-valued
-parameters (e.g. multiple profile URLs, multiple IGs) are passed as a
-single comma-separated string, matching the existing native HTTP
-endpoints.
+The GITB schema allows `Configuration` entries in addition to `input` items. In line with ITB built-in handler conventions, this validator passes everything through `input[]` — `config[]` is accepted on the wire (per the spec) but currently unused by all services.
 
 ### 2.6 Errors
 
 | Situation | HTTP | Body |
 |---|---|---|
-| Malformed JSON request | 400 | `{ "error": "…" }` |
-| Missing required input/config | 400 | `{ "error": "Missing required input: <name>" }` |
-| Unknown operation (processing) | 400 | `{ "error": "Unknown operation: <op>. Supported: <list>" }` |
-| Unsupported `embeddingMethod` content (e.g. bad base64) | 400 | `{ "error": "…" }` |
-| Validation engine failure (IG load failure, parse error) | 200 with TAR `result: FAILURE` and a `ReportItem` carrying the error — **not** a 5xx |
-| Unrecoverable server error | 500 | `{ "error": "Internal server error" }` |
+| Malformed JSON request | 400 | `{ "error": "Malformed JSON: …" }` |
+| Missing required input | 400 | `{ "error": "Missing required input: <name>" }` |
+| Unknown `operation` (Processing services) | 400 | `{ "error": "Unknown operation: <op>. Supported: <list>" }` |
+| Unsupported / invalid AnyContent encoding | 400 | `{ "error": "…" }` |
+| Domain failure (IG not found, parse error) | 200 | TAR with `result: FAILURE` (or `UNDEFINED` when the engine threw) — **not** a 5xx |
+| Unrecoverable server error | 500 | `{ "error": "Internal error: …" }` |
 
-HTTP 5xx is reserved for genuine server bugs. Domain-level failures (IG
-not found, resource unparseable) return 200 with a TAR that explains what
-happened — consistent with GITB semantics and with how test engines
-process results.
+HTTP 5xx is reserved for server bugs. Domain-level failures return 200 with a TAR explaining what happened.
 
-### 2.7 `GET /<service>/definition`
+### 2.7 `GET /<svc>/getModuleDefinition`
 
-Every service exposes `GET /<path-prefix>/definition`. The response is a
-GITB `ServiceDefinition`: `{ id, operations[], inputs[], outputs[] }`,
-where each input/output is `{ name, type, required }`. The shape is
-flatter than the upstream GITB `ValidationModule` / `ProcessingModule`
-because the validator unifies validation and processing services behind
-a single endpoint shape (§2.1). It is used both for human documentation
-and for ITB auto-discovery.
+Returns `GetModuleDefinitionResponse = { "module": ValidationModule | ProcessingModule }`. The module declares the service's id, metadata, and inputs/outputs (TypedParameters), per `gitb_core.xsd`.
 
-### 2.8 OperationOutcome → TAR mapping
+### 2.8 `OperationOutcome → TAR` mapping (validation services)
 
-Validation services produce a TAR. Mapping from FHIR `OperationOutcome`
-to `TAR`:
+Validation services produce a TAR. FHIR `OperationOutcome.issue[]` maps to TAR `items[]`:
 
 | OperationOutcome field | TAR field |
 |---|---|
-| `issue[*].severity = fatal \| error` | `items[].level = ERROR`, increments `counters.nrOfErrors` |
-| `issue[*].severity = warning` | `items[].level = WARNING`, increments `counters.nrOfWarnings` |
-| `issue[*].severity = information` | `items[].level = INFO`, increments `counters.nrOfAssertions` |
-| `issue[*].details.text` | `items[].description` |
-| `issue[*].expression[*]` joined with `; ` (fallback: `issue[*].location[*]` joined with `; `) | `items[].location` |
-| `issue[*].code` | `items[].type` |
-| `issue[*].diagnostics` | `items[].value` (when non-null) |
-| Rule/invariant id (from extension) | `items[].assertionID` |
+| `issue.severity = fatal\|error` | `items[].level = ERROR`, `counters.nrOfErrors++` |
+| `issue.severity = warning` | `items[].level = WARNING`, `counters.nrOfWarnings++` |
+| `issue.severity = information` | `items[].level = INFO`, `counters.nrOfAssertions++` |
+| `issue.details.text` | `items[].description` |
+| `issue.expression[*]` joined `; ` (fallback `issue.location[*]`) | `items[].location` |
+| `issue.code` | `items[].type` |
+| `issue.diagnostics` | `items[].value` |
 
-TAR `result` is derived from counters and the caller's severity
-threshold (see `failOn` in §3.2). With the default threshold
-(`failOn = error`):
+TAR `result` derives from counters and the caller's severity threshold (`failOn` in §3.1):
 
 ```
-errors   > 0                           → FAILURE
-errors  == 0 AND warnings  > 0         → WARNING
-errors  == 0 AND warnings == 0         → SUCCESS
-engine threw before producing outcome  → UNDEFINED
+default (failOn = error):
+  errors  > 0                 → FAILURE
+  errors == 0, warnings > 0   → WARNING
+  errors == 0, warnings == 0  → SUCCESS
+  engine threw before outcome → UNDEFINED
 ```
 
-With `failOn = warning` the threshold shifts: any warning flips the
-result to `FAILURE` (no intermediate `WARNING`). With
-`failOn = information` any issue at all fails the step. See §3.2 for the
-full table.
+`failOn = warning` flips warnings to FAILURE; `failOn = information` flips any issue to FAILURE.
 
-The TAR `context` is an array of `AnyContent` items. By default it
-contains:
-
-```json
-"context": [
-  {
-    "name": "operationOutcome",
-    "value": "<OperationOutcome JSON>",
-    "embeddingMethod": "STRING",
-    "type": "string",
-    "mimeType": "application/fhir+json",
-    "forContext": true,
-    "forReport": true
-  },
-  {
-    "name": "content",
-    "value": "<the validated payload, as sent>",
-    "embeddingMethod": "STRING",
-    "type": "string",
-    "mimeType": "application/fhir+json",
-    "forContext": true,
-    "forReport": true
-  }
-]
-```
-
-The `content` AnyContent is included by default (input
-`includeContentInReport`, default `true`). It enables two ITB
-behaviours: (1) the original payload is shown next to findings in the
-report viewer, and (2) report items can use `location` of the form
-`content:<line>:<col>` to anchor to a line of the original payload,
-which the ITB inline editor consumes to jump to the exact line. The
-plain JSON-path form (e.g. `Patient.name[0].family`) remains valid; the
-line-anchored form is used when the validator can resolve a finding to
-a line number in the source.
-
-`mimeType`, `forContext` and `forReport` are AnyContent properties used
-by the ITB to decide rendering — they are populated by the server
-(output direction). When `inputs.includeContentInReport` is `false`,
-the `content` AnyContent is omitted from `context`.
-
-TAR `overview` carries service name + version + the session id received
-in headers. TAR `date` is the server UTC timestamp. TAR `id` is a fresh
-UUID per call (distinct from `sessionId`).
+TAR `context[]` always includes the raw `OperationOutcome` JSON. When `inputs.includeContentInReport` is true (default), it also includes the validated `content` AnyContent — enabling the ITB inline editor and `content:<line>:<col>` location anchors.
 
 ---
 
-## 3. `FHIRValidator`
+## 3. Validation services
 
-**Path prefix**: `/fhir`
-**Endpoints**: `GET /fhir/definition`, `POST /fhir/process`
-**Operations**: `validate`, `loadIG`
+All validation services use the same wire shape:
 
-> **Why `/fhir` and not `/validator`?** Symmetric with the other path
-> prefixes (`/matchetype`, `/fhirpath`, …). Suggested in ITB review.
+```http
+POST /itb/<svc>/validate
+Content-Type: application/json
 
-> **Why is `loadIG` here and not on a separate `IGManager` service?**
-> Earlier drafts of this spec carved out an `IGManager`. After review,
-> `loadIG` was folded into FHIRValidator since (a) IG load is part of
-> setting up validation, (b) it keeps the surface smaller, and (c) the
-> openapi overlay already groups them under one service. A future
-> revision can add `listIGs` either here or as a separate service if it
-> proves useful.
-
-### 3.1 `validate` — inputs
-
-| Name | Required | Description |
-|---|---|---|
-| `content` | yes | The FHIR resource to validate, as a string in the format declared by `contentType`. |
-| `contentType` | no | `application/fhir+json` *(default)*, `application/fhir+xml`, `text/turtle`. Selects the wire format of `content`. |
-| `profiles` | no | Comma-separated profile URLs. Multiple profiles are allowed. |
-| `bpWarnings` | no | `Ignore`, `Hint`, `Warning`, `Error`. Best-practice warning level. |
-| `resourceIdRule` | no | `OPTIONAL`, `REQUIRED`, `PROHIBITED`. How to treat the resource `id`. |
-| `displayWarnings` | no | `true`/`false`. Whether to emit display-mismatch warnings for codings. |
-| `failOn` | no | `error` *(default)*, `warning`, `information`. Severity threshold for the TAR `result`. |
-| `includeContentInReport` | no | `true` *(default)*, `false`. Whether to echo `content` in the TAR `context`. See §2.8. |
-
-> **Why a separate `contentType` instead of an AnyContent `mimeType`?**
-> ITB review pointed out that `mimeType` on the GITB AnyContent input is
-> ambiguous (it's really an output rendering hint). A separate optional
-> `contentType` input removes the ambiguity, defaults to the common case
-> (`application/fhir+json`), and keeps the input shape flat (§2.4).
-
-### 3.2 `failOn` behaviour
-
-`failOn` selects the level at which issues flip the TAR `result` from a
-pass to a fail. It is applied **after** `bpWarnings` (which controls the
-severity of best-practice rules themselves) — so you can first promote /
-demote specific rule classes, then decide what severity fails the step.
-
-| `failOn` | FAILURE when | WARNING when | SUCCESS when |
-|---|---|---|---|
-| `error` *(default)* | `errors > 0` | `errors == 0 AND warnings > 0` | `errors == 0 AND warnings == 0` |
-| `warning` | `errors > 0 OR warnings > 0` | *(never)* | `errors == 0 AND warnings == 0` |
-| `information` | any issue at all | *(never)* | no issues at all |
-
-Regardless of `failOn`, the TAR always carries the full `counters`
-(`nrOfErrors`, `nrOfWarnings`, `nrOfAssertions`), the full `items[]`,
-and the raw `OperationOutcome` in `context`. Callers that want finer
-assertions (e.g. "exactly one error mentioning `identifier`") can still
-post-process the TAR with `ValidationResultsProcessor` or with a
-`FHIRPathProcessor.assert` call over the context.
-
-### 3.3 `validate` — example request
-
-```json
-POST /itb/fhir/process
 {
-  "operation": "validate",
-  "inputs": {
-    "content":   "{\"resourceType\":\"Patient\",\"id\":\"ex1\",\"name\":[{\"family\":\"Smith\"}]}",
-    "contentType": "application/fhir+json",
-    "profiles": "http://hl7.fhir.be.core/StructureDefinition/be-patient",
-    "bpWarnings": "Warning"
-  }
-}
-```
-
-### 3.4 `validate` — example response (one warning, content echoed)
-
-```json
-200 OK
-{
-  "result": "WARNING",
-  "output": {
-    "outcome":  "{\"resourceType\":\"OperationOutcome\",\"issue\":[…]}",
-    "severity": "warning",
-    "errors":   "0",
-    "warnings": "1"
-  },
-  "report": {
-    "id": "8c3e2a…",
-    "date": "2026-04-27T12:00:00Z",
-    "result": "WARNING",
-    "counters": { "nrOfAssertions": 0, "nrOfErrors": 0, "nrOfWarnings": 1 },
-    "overview": {
-      "name": "HL7 FHIR Validator",
-      "version": "6.9.8-SNAPSHOT",
-      "note": "session=abc-123"
+  "sessionId": "abc-123",          // optional
+  "config": [                      // optional Configuration entries
+    { "name": "version", "value": "4.0" }
+  ],
+  "input": [                       // AnyContent items
+    {
+      "name": "contentToValidate",
+      "value": "{\"resourceType\":\"Patient\",\"name\":[{\"family\":\"Smith\"}]}",
+      "embeddingMethod": "STRING",
+      "mimeType": "application/fhir+json"
     },
-    "items": [
-      {
-        "level": "WARNING",
-        "type": "code-invalid",
-        "description": "Code 'foo' is not in the value set",
-        "location": "Patient.identifier.system",
-        "assertionID": "ips-pat-1"
-      }
-    ],
-    "context": [
-      {
-        "name": "operationOutcome",
-        "value": "{\"resourceType\":\"OperationOutcome\",\"issue\":[…]}",
-        "embeddingMethod": "STRING", "type": "string",
-        "mimeType": "application/fhir+json",
-        "forContext": true, "forReport": true
-      },
-      {
-        "name": "content",
-        "value": "{\"resourceType\":\"Patient\",\"id\":\"ex1\",\"name\":[{\"family\":\"Smith\"}]}",
-        "embeddingMethod": "STRING", "type": "string",
-        "mimeType": "application/fhir+json",
-        "forContext": true, "forReport": true
-      }
-    ]
-  }
+    { "name": "profiles", "value": "http://hl7.org/fhir/StructureDefinition/Patient", "embeddingMethod": "STRING" }
+  ]
 }
 ```
 
-The flat `output` echoes summary counts for callers that just want a
-quick read; `report` carries the full TAR.
-
-### 3.5 `loadIG`
-
-Pre-loads an IG package so subsequent `validate` calls can resolve its
-profiles, value sets, etc. Idempotent — no-op if already loaded.
-
-| Name | Required | Description |
-|---|---|---|
-| `ig` | yes | `package#version`, e.g. `hl7.fhir.be.core#2.1.2`. `#current` resolves to the latest build. |
-
-Returns a plain `ProcessResponse` (no TAR):
+Response is a `ValidationResponse`:
 
 ```json
-200 OK
-{ "result": "SUCCESS", "output": { "loaded": "hl7.fhir.be.core#2.1.2" } }
+{ "report": { /* TAR */ } }
 ```
+
+### 3.1 `FHIRValidator`
+
+**Path**: `/itb/fhir` — Operation: `validate`.
+
+| Input | Required | Notes |
+|---|---|---|
+| `contentToValidate` | yes | The FHIR resource to validate, as a string in the format declared by `contentType`. |
+| `contentType` | no | `application/fhir+json` (default), `application/fhir+xml`, `text/turtle`. |
+| `profiles` | no | Comma-separated profile canonical URLs. |
+| `bpWarnings` | no | `Ignore`, `Hint`, `Warning`, `Error`. |
+| `resourceIdRule` | no | `OPTIONAL`, `REQUIRED`, `PROHIBITED`. |
+| `displayWarnings` | no | `true`/`false`. |
+| `failOn` | no | `error` (default), `warning`, `information`. Severity that flips TAR result to FAILURE. |
+| `includeContentInReport` | no | `true` (default), `false`. Whether to echo `contentToValidate` in TAR `context`. |
+
+Returns a TAR with the OperationOutcome and (when `includeContentInReport` is true) the validated content in `report.context[]`. See §2.8.
+
+### 3.2 `MatchetypeValidator`
+
+**Path**: `/itb/matchetype` — Operation: `validate`.
+
+| Input | Required | Notes |
+|---|---|---|
+| `contentToValidate` | yes | Actual resource (FHIR JSON). |
+| `matchetype` | yes | Expected pattern (FHIR JSON) — may use `$string$`, `$date$`, `$uuid$`, `$choice:a\|b\|c$` wildcards. |
+| `mode` | no | `complete` (default) or `partial`. |
+
+Returns a TAR; mismatches produce `result: FAILURE` with one item per mismatching path.
+
+### 3.3 `FHIRPathAssertion`
+
+**Path**: `/itb/fhirpathAssertion` — Operation: `validate`.
+
+Asserts that a FHIRPath expression evaluates to a singleton Boolean `true`.
+
+| Input | Required | Notes |
+|---|---|---|
+| `contentToValidate` | yes | The FHIR resource. |
+| `expression` | yes | The FHIRPath expression. Should evaluate to a singleton Boolean. |
+| `description` | no | Free-text rationale; copied to the TAR item. |
+
+Result mapping:
+
+| FHIRPath result | TAR `result` |
+|---|---|
+| Singleton `true` | `SUCCESS` |
+| Singleton `false` | `FAILURE` |
+| Empty collection | `FAILURE` (per FHIRPath conditional semantics) |
+| Non-Boolean singleton | `FAILURE` |
+| Parse / engine error | `UNDEFINED` |
 
 ---
 
 ## 4. Processing services
 
-All processing services share the same endpoint shape (§2.1):
-`GET /<service>/definition`, `POST /<service>/process`.
+All processing services share four endpoints (`getModuleDefinition`, `process`, `beginTransaction`, `endTransaction`). The validator's processing services are stateless — `beginTransaction` returns a fresh UUID; `endTransaction` is a no-op (HTTP 204).
 
-The `process` body is `{ "operation": "<name>", "inputs": { … } }`.
-There is no `beginTransaction` / `endTransaction` — the validator is
-stateless beyond loaded IGs, which persist at the server level.
+`process` body:
+
+```http
+POST /itb/<svc>/process
+Content-Type: application/json
+
+{
+  "sessionId": "abc-123",  // optional
+  "operation": "evaluate", // operation name (optional when service has only one)
+  "input": [
+    { "name": "content",    "value": "...", "embeddingMethod": "STRING" },
+    { "name": "expression", "value": "Patient.name.family", "embeddingMethod": "STRING" }
+  ]
+}
+```
+
+Response is a `ProcessResponse`:
+
+```json
+{
+  "output": [
+    { "name": "result", "value": "Smith", "embeddingMethod": "STRING", "mimeType": "text/plain" }
+  ]
+}
+```
+
+(Validation-flavoured processing services may also return a `report: TAR` alongside `output[]`; the validator's processing services currently emit only `output[]`.)
 
 ### 4.1 `FHIRPathProcessor`
 
-**Path prefix**: `/fhirpath`
-**Operations**: `evaluate`, `assert`
+**Path**: `/itb/fhirpath` — Operation: `evaluate`.
 
-A processor (utility) over FHIRPath. The two operations share the same
-inputs — `assert` is a special case of `evaluate` where the expression
-is expected to evaluate to a Boolean and the operation reports
-`SUCCESS` only when the value is `true`.
+Inputs: `content`, `expression`. Output: `result` (the evaluated value as a string; collections are JSON-array-encoded; Booleans `true`/`false`).
 
-> **Why one service, two operations, and not a separate
-> `FHIRPathAssertion`?** A previous draft of this spec carved out a
-> `FHIRPathAssertion` validation service. Review made the case that
-> "assert if true" is a thin wrapper over `evaluate`, and forcing the
-> caller to choose between two services adds friction. Folding it into
-> `FHIRPathProcessor` as an `assert` operation keeps the surface
-> smaller while giving callers exactly the same capability.
+For pass/fail assertions, use `FHIRPathAssertion` (§3.3).
 
-#### Inputs (both operations)
+### 4.2 `TestDataGenerator`
 
-| Name | Required | Description |
+**Path**: `/itb/testdata` — Operations: `generate`, `generateBundle`.
+
+| Input | Required | Notes |
 |---|---|---|
-| `content` | yes | FHIR resource (or other FHIRPath context) as stringified JSON. *Renamed from `contentToValidate` per ITB review — this is a processor, not a validator.* |
-| `expression` | yes | FHIRPath expression. |
+| `profile` | yes | Canonical URL of the StructureDefinition. |
+| `mappings` | no | Stringified JSON array of mapping objects. |
+| `data` | no | Stringified JSON array of data rows. |
 
-#### `evaluate` — semantics
+Output: `resource` (the generated FHIR resource as JSON). `generateBundle` wraps it in a Bundle.
 
-| FHIRPath result | `result` | `output.result` |
+### 4.3 `ValidationResultsProcessor`
+
+**Path**: `/itb/validationResults` — Operations: `summarize`, `filterBySeverity`, `filterByText`.
+
+Pure JSON utility — does not call the validation engine.
+
+| Operation | Inputs | Outputs |
 |---|---|---|
-| Singleton value | `SUCCESS` | the value as a string (`true`/`false` for Booleans, `"42"` for integers, etc.) |
-| Collection | `SUCCESS` | the values, JSON-array-encoded |
-| Empty | `SUCCESS` | `""` |
-| Parse / engine error | `FAILURE` | (no `result`; `error` carries the message) |
+| `summarize` | `outcome` (OperationOutcome JSON) | `errors` (count), `warnings` (count), `information` (count) |
+| `filterBySeverity` | `outcome`, `severity` (`fatal\|error\|warning\|information`) | `count`, `outcome` (filtered OperationOutcome) |
+| `filterByText` | `outcome`, `text` (substring) | `count`, `outcome` (filtered OperationOutcome) |
 
-#### `assert` — semantics
+### 4.4 `IGManager`
 
-| FHIRPath result | `result` | `output.result` |
+**Path**: `/itb/igmanager` — Operation: `loadIG`. Idempotent — re-loading is a no-op.
+
+| Input | Required | Notes |
 |---|---|---|
-| Singleton `true` | `SUCCESS` | `"true"` |
-| Singleton `false` | `FAILURE` | `"false"` |
-| Empty collection | `FAILURE` | `"false"` *(per FHIRPath conditional semantics)* |
-| Non-Boolean singleton | `FAILURE` | `"<value>"`; `error` notes the type mismatch |
-| Parse / engine error | `FAILURE` | (no `result`; `error` carries the message) |
+| `ig` | yes | `package#version` (e.g. `hl7.fhir.be.core#2.1.2`). `#current` resolves to the latest build. |
 
-#### Examples
+Output: `loaded` (the resolved `package#version`).
 
-```json
-POST /itb/fhirpath/process
-{
-  "operation": "evaluate",
-  "inputs": {
-    "content":    "{\"resourceType\":\"Patient\",\"name\":[{\"family\":\"Smith\"}]}",
-    "expression": "Patient.name.family"
-  }
-}
-→ 200 OK
-{ "result": "SUCCESS", "output": { "result": "Smith" } }
-```
-
-```json
-POST /itb/fhirpath/process
-{
-  "operation": "assert",
-  "inputs": {
-    "content":    "{\"resourceType\":\"Patient\",\"name\":[{\"given\":[\"Ann\"]}]}",
-    "expression": "Patient.name.given.count() > 0"
-  }
-}
-→ 200 OK
-{ "result": "SUCCESS", "output": { "result": "true" } }
-```
-
-### 4.2 `MatchetypeProcessor`
-
-**Path prefix**: `/matchetype`
-**Operations**: `compare`
-
-#### `compare` — inputs
-
-| Name | Required | Description |
-|---|---|---|
-| `resource` | yes | Actual resource (stringified FHIR JSON). |
-| `matchetype` | yes | Expected pattern (stringified FHIR JSON). |
-| `mode` | no | `complete` *(default)* or `partial`. `partial` allows extra fields in the actual resource. |
-
-#### Result semantics
-
-- Exact match (subject to `mode`) → `result: SUCCESS`, no items.
-- Mismatch → `result: FAILURE`, one item per mismatching path with `location` pointing at the FHIRPath into the actual resource.
-
-#### Example
-
-```json
-POST /itb/matchetype/process
-{
-  "operation": "compare",
-  "inputs": {
-    "resource":   "{\"resourceType\":\"Patient\",\"active\":true,\"name\":[{\"family\":\"Smith\",\"given\":[\"Ann\"]}]}",
-    "matchetype": "{\"resourceType\":\"Patient\",\"name\":[{\"family\":\"Smith\"}]}",
-    "mode":       "partial"
-  }
-}
-```
-
-### 4.3 `TestDataGenerator`
-
-**Path prefix**: `/testdata`
-**Operations**: `generate`, `generateBundle`
-
-#### `generate` — inputs/outputs
-
-| Direction | Name | Type | Description |
-|---|---|---|---|
-| input | `profile` | string | Canonical URL of the `StructureDefinition` to generate against. |
-| input | `mappings` | string | Optional JSON array of mapping objects. |
-| input | `data` | string | Optional JSON array of data rows. |
-| output | `resource` | string | Generated FHIR resource as stringified JSON. |
-
-#### `generateBundle`
-
-Same inputs; wraps the generated resource in a `Bundle`.
-
-### 4.4 `ValidationResultsProcessor`
-
-**Path prefix**: `/validationResults` *(camelCase, per ITB review)*
-**Operations**: `summarize`, `filterBySeverity`, `filterByText`
-
-Operates on a raw `OperationOutcome` passed in by the caller (from any
-source — not tied to `FHIRValidator`). The `FHIRValidator.validate`
-response already includes counters in the TAR and the raw
-`OperationOutcome` in its context, so this service is most useful for
-callers that have an `OperationOutcome` from an upstream FHIR server or
-a previous test step and want a quick filter/count without parsing it
-themselves.
-
-> **Scope note**: the operation catalogue here is the current minimum
-> (`summarize`, `filterBySeverity`, `filterByText`). Richer
-> OperationOutcome parsing (e.g. grouping by `location`, extracting by
-> `assertionID`, re-serialising a filtered outcome) is left for a
-> future iteration. The raw `OperationOutcome` is always available in
-> `FHIRValidator`'s TAR context, so callers who need capabilities
-> beyond this catalogue can parse it themselves while the service
-> evolves.
-
-#### `summarize`
-
-| Direction | Name | Type | Description |
-|---|---|---|---|
-| input | `outcome` | string | `OperationOutcome` as stringified JSON. |
-| output | `errors` | string | Error count. |
-| output | `warnings` | string | Warning count. |
-| output | `information` | string | Information count. |
-
-#### `filterBySeverity`
-
-| Direction | Name | Type | Description |
-|---|---|---|---|
-| input | `outcome` | string | `OperationOutcome`. |
-| input | `severity` | string | `fatal`, `error`, `warning`, `information`. |
-| output | `count` | string | Count of issues at that severity. |
-| output | `outcome` | string | Filtered `OperationOutcome` containing only matching issues. |
-
-#### `filterByText`
-
-| Direction | Name | Type | Description |
-|---|---|---|---|
-| input | `outcome` | string | `OperationOutcome`. |
-| input | `text` | string | Substring to match against each issue's `details.text`. |
-| output | `count` | string | Count of matching issues. |
-| output | `outcome` | string | Filtered `OperationOutcome`. |
+A future `listIGs` operation (returning a nested AnyContent list of `{package, version, resources, loadedAt}` per loaded IG) is planned but not implemented.
 
 ---
 
 ## 5. A typical test case
 
-End-to-end flow demonstrating how the services compose through the ITB
-test engine. All handlers use `handlerApiType="REST"`.
+End-to-end flow through the ITB test engine. All handlers use `handlerApiType="REST"`. The handler URI is the service root.
 
 ```xml
-<!-- 1. Ensure the needed IGs are loaded on the target validator -->
-<process handler="$DOMAIN{fhirValidator}" handlerApiType="REST" operation="loadIG">
-  <input name="ig">'hl7.fhir.be.core#1.0.0'</input>
-</process>
-<process handler="$DOMAIN{fhirValidator}" handlerApiType="REST" operation="loadIG">
-  <input name="ig">'hl7.fhir.uv.ips#2.0.0'</input>
+<!-- 1) Load the IG -->
+<process handler="$DOMAIN{IGManager}" handlerApiType="REST" operation="loadIG">
+  <input name="ig">'hl7.fhir.be.core#2.1.2'</input>
 </process>
 
-<!-- 2. Generate a resource against a profile -->
-<process handler="$DOMAIN{testDataGenerator}" handlerApiType="REST" operation="generate">
-  <input name="profile">'http://hl7.fhir.be.core/StructureDefinition/be-patient'</input>
+<!-- 2) Generate test data -->
+<process handler="$DOMAIN{TestDataGenerator}" handlerApiType="REST" operation="generate">
+  <input name="profile">'http://hl7.org/fhir/StructureDefinition/Patient'</input>
   <output name="resource">$generated</output>
 </process>
 
-<!-- 3a. Invariant assertion via FHIRPath assert -->
-<process handler="$DOMAIN{fhirpathProcessor}" handlerApiType="REST" operation="assert">
-  <input name="content">$generated</input>
-  <input name="expression">'Patient.name.given.count() > 0'</input>
-</process>
-
-<!-- 3b. Full structural validation against a different profile -->
-<verify handler="$DOMAIN{fhirValidator}" handlerApiType="REST" operation="validate">
-  <input name="content">$generated</input>
-  <input name="profiles">'http://hl7.org/fhir/uv/ips/StructureDefinition/Patient-uv-ips'</input>
-</verify>
-
-<!-- 3c. Strict variant: any warning fails the step -->
-<verify handler="$DOMAIN{fhirValidator}" handlerApiType="REST" operation="validate" output="$report">
-  <input name="content">$generated</input>
-  <input name="profiles">'http://hl7.org/fhir/uv/ips/StructureDefinition/Patient-uv-ips'</input>
+<!-- 3) Validate against the IG -->
+<verify handler="$DOMAIN{FHIRValidator}" handlerApiType="REST" output="$report">
+  <input name="contentToValidate">$generated</input>
+  <input name="profiles">'http://hl7.fhir.be.core/StructureDefinition/be-patient'</input>
   <input name="failOn">'warning'</input>
 </verify>
 
-<!-- 3d. Pull the counters and individual item fields out of the TAR -->
+<!-- 4) Pull counters and items out of the TAR -->
 <assign to="$errorCount">$report/counters/nrOfErrors</assign>
-<assign to="$warnCount">$report/counters/nrOfWarnings</assign>
-<assign to="$infoCount">$report/counters/nrOfAssertions</assign>
-
-<!-- 3e. Iterate every issue — each item has level, description, location, type, assertionID -->
 <foreach counter="$i" start="0" end="$report/items/size() - 1">
-  <log>
-    [$report/items[$i]/level] $report/items[$i]/description
-    at $report/items[$i]/location
-  </log>
+  <log>[$report/items[$i]/level] $report/items[$i]/description at $report/items[$i]/location</log>
 </foreach>
 
-<!-- 3f. Reach into the report context for the validated payload or raw OperationOutcome -->
+<!-- 5) Reach into report context for the validated payload or raw OperationOutcome -->
 <assign to="$payload">$report/context[name='content']/value</assign>
 <assign to="$outcomeJson">$report/context[name='operationOutcome']/value</assign>
 
-<!-- 3g. Or post-process the OperationOutcome via the dedicated service -->
-<process handler="$DOMAIN{validationResultsProcessor}" handlerApiType="REST" operation="filterByText">
+<!-- 6) Post-process the OperationOutcome -->
+<process handler="$DOMAIN{ValidationResultsProcessor}" handlerApiType="REST" operation="filterByText">
   <input name="outcome">$outcomeJson</input>
   <input name="text">'identifier'</input>
   <output name="count">$identifierIssueCount</output>
 </process>
+
+<!-- 7) Boolean assertion -->
+<verify handler="$DOMAIN{FHIRPathAssertion}" handlerApiType="REST">
+  <input name="contentToValidate">$generated</input>
+  <input name="expression">'Patient.name.given.count() > 0'</input>
+</verify>
 ```
 
-Each validation step produces a TAR. The ITB test engine inspects
-`report.result` to mark the step pass/fail and renders `report.items` in
-the session log.
-
-Everything needed for downstream parsing is preserved on every call
-regardless of `failOn`:
+Everything needed for downstream parsing is preserved on every validation call regardless of `failOn`:
 
 | What you want | Where it is |
 |---|---|
 | Count of errors | `$report/counters/nrOfErrors` |
 | Count of warnings | `$report/counters/nrOfWarnings` |
 | Count of informational issues | `$report/counters/nrOfAssertions` |
-| Each issue's severity | `$report/items[n]/level` (`ERROR` / `WARNING` / `INFO`) |
+| Each issue's severity | `$report/items[n]/level` (`ERROR`/`WARNING`/`INFO`) |
 | Each issue's message | `$report/items[n]/description` |
 | Each issue's location | `$report/items[n]/location` (JSON path or `content:<line>:<col>`) |
-| Each issue's type (FHIR issue code) | `$report/items[n]/type` |
+| Each issue's type code | `$report/items[n]/type` |
 | Each issue's rule id | `$report/items[n]/assertionID` |
 | The validated payload | `$report/context[name='content']/value` |
 | The original OperationOutcome | `$report/context[name='operationOutcome']/value` |
@@ -680,87 +376,46 @@ regardless of `failOn`:
 
 ### 6.1 Preloading IGs at startup
 
-The existing `-ig` CLI flag on the HTTP mode pre-populates the engine
-before any request arrives:
+The existing `-ig` CLI flag pre-populates the engine before any request:
 
 ```
 java -jar validator_cli.jar http-api -port 8080 -version 4.0 \
-  -ig hl7.fhir.be.core#1.0.0 \
-  -ig hl7.fhir.uv.ips#2.0.0 \
-  -ig hl7.fhir.us.core#6.1.0
+  -ig hl7.fhir.be.core#2.1.2 \
+  -ig hl7.fhir.uv.ips#2.0.0
 ```
 
-Test authors SHOULD still emit `FHIRValidator.loadIG` calls in their
-test cases — doing so makes the test portable across validator
-instances and costs ~1 ms per IG once preloaded.
+Test authors SHOULD still emit `IGManager.loadIG` calls so tests stay portable across validator instances; loading an already-loaded package is fast.
 
 ### 6.2 Memory
 
-Loaded IGs stay in memory for the lifetime of the JVM. `unloadIG` is
-intentionally not offered in v1; monitor memory footprint in
-long-running deployments and restart if needed. If unload becomes
-necessary, it can be added as a new operation on `FHIRValidator`
-without a breaking change.
+Loaded IGs stay resident for the JVM lifetime. There is no `unloadIG` in v1; restart for memory pressure.
 
 ### 6.3 Concurrency
 
-The validator engine is safe for concurrent reads. Package loads are
-serialized per-package via `synchronized(packageId)`. All `process`
-endpoints are fully concurrent.
+The validator is safe for concurrent reads. Package loads serialise per-package via `synchronized(packageId)`. All `validate` and `process` endpoints are fully concurrent.
 
 ### 6.4 Headers
 
-The five GITB headers are parsed and attached to the SLF4J MDC for the
-duration of the request, giving structured logs a `testSessionId`,
-`testCaseId`, `testStepId` field. Nothing else depends on them.
+GITB headers are parsed and attached to the SLF4J MDC for the duration of the request, surfacing in structured logs as `testSessionId`, `testCaseId`, `testStepId`.
 
 ### 6.5 OpenAPI overlay
 
-A single `GET /openapi.json` serves the OpenAPI document for these
-services. The companion file
-[gitb-openapi.json](org.hl7.fhir.validation/src/main/resources/org/hl7/fhir/validation/http/gitb-openapi.json)
-is the authoritative machine-readable spec — this markdown is the
-narrative companion. When they disagree, the OpenAPI is the
-implementation contract.
+`GET /openapi.json` serves the OpenAPI document for these services. The companion file [gitb-openapi.json](org.hl7.fhir.validation/src/main/resources/org/hl7/fhir/validation/http/gitb-openapi.json) is the authoritative machine-readable spec — this markdown is its narrative companion.
 
 ---
 
-## 7. Implementation plan
+## 7. Implementation outline
 
-All changes land on a single feature branch off `upstream/master`, as a
-sequence of reviewable commits:
+The handlers live in `org.hl7.fhir.validation/src/main/java/org/hl7/fhir/validation/http/`:
 
-1. **Add GITB type builders and TAR mapper** — `gitb/` sub-package with
-   `AnyContent`, `TAR`, `ReportItem`, `ValidationCounters`,
-   `ValidationOverview`, `ServiceDefinition`, `ProcessResponse`,
-   `ValidationResponse` as plain `JsonObject` builders, plus
-   `OperationOutcomeToTarMapper`. No dependency on `gitb-types-jakarta`.
-2. **Add the unified base handler** — `GitbServiceHandler` with the
-   `GET /<svc>/definition` and `POST /<svc>/process` shape. Each
-   concrete handler declares its `ServiceDefinition` and a dispatch map
-   from operation name to a Java method.
-3. **Port `FHIRValidator`** — new handler for the `/fhir` prefix
-   serving `validate` and `loadIG`. Wires through to the existing
-   `ValidationEngine` calls. Maps `OperationOutcome` → TAR with
-   `operationOutcome` always in `context`, and `content` in `context`
-   when `includeContentInReport` is true (default).
-4. **Port `FHIRPathProcessor`** to `/fhirpath` serving both `evaluate`
-   and `assert`.
-5. **Port `MatchetypeProcessor`, `TestDataGenerator`,
-   `ValidationResultsProcessor`** to the new base.
-6. **Wire all routes** in `FhirValidatorHttpService.startServer()`.
-   Existing flat handlers (`/fhirpath`, `/validateResource`, …) remain
-   for backward compatibility.
-7. **Add tests** — one integration test per service exercising
-   `/<svc>/definition` + at least one successful and one failing
-   `process` call. `OperationOutcome → TAR` mapper gets unit tests for
-   every severity branch.
-8. **(Optional, deferred)** Resolve report-item `location` to
-   `content:<line>:<col>` form using a JSON-path → line-number lookup
-   over the original payload, so the ITB inline editor can jump to the
-   exact line.
+- `GitbServiceHandler` — base class; HTTP transport, AnyContent helpers, module-definition helpers.
+- `GitbValidationServiceHandler` — dispatch base for VS (`getModuleDefinition` + `validate`).
+- `GitbProcessingServiceHandler` — dispatch base for PS (`getModuleDefinition` + `process` + `beginTransaction` + `endTransaction`).
+- `GitbFhirHandler`, `GitbMatchetypeHandler`, `GitbFhirPathAssertionHandler` — validation services.
+- `GitbFhirPathHandler`, `GitbTestDataHandler`, `GitbValidationResultsHandler`, `GitbIgManagerHandler` — processing services.
+- `GitbTarBuilder` — `OperationOutcome` → TAR mapping per §2.8.
 
-Estimated size: ~2000 LOC added, ~800 LOC removed / modified.
+Routes are wired in `FhirValidatorHttpService.startServer()` under `/itb/<svc>` (one `createContext` per service; sub-paths are handled inside each service).
 
 ---
 
@@ -768,25 +423,22 @@ Estimated size: ~2000 LOC added, ~800 LOC removed / modified.
 
 | # | Decision | Rationale |
 |---|---|---|
-| 1 | Path prefix `/fhir` for the FHIR validator (not `/validator`). | ITB review — symmetric with `/matchetype`, `/fhirpath`, `/testdata`, `/validationResults`. |
-| 2 | `validationResults` (camelCase, not kebab). | ITB review — operations and paths use lower-camelCase, matching ITB built-in service operation names like `getModuleDefinition`. |
-| 3 | Inputs only — no `configs`. | ITB review — built-in service handlers use inputs for everything; inputs are a strict superset of configs. |
-| 4 | Separate `contentType` input on `FHIRValidator.validate`, optional, defaulting to `application/fhir+json`. | ITB review — `mimeType` on AnyContent inputs is ambiguous (it's an output rendering hint). A separate `contentType` input is unambiguous and self-documenting. |
-| 5 | `includeContentInReport` input, default `true`. | ITB review — including the validated payload in TAR `context` makes the ITB report viewer much more useful. Optional so callers can opt out for very-large payloads. |
-| 6 | Report item `location` accepts both JSON path and `content:<line>:<col>`. | ITB review — JSON path is fine for display; the line-anchored form unlocks the ITB inline editor's "jump to line" feature. The validator emits whichever form it can resolve. |
-| 7 | FHIRPath `evaluate` and `assert` are operations on a single `FHIRPathProcessor` service (not separate `FHIRPathProcessor` + `FHIRPathAssertion` services). | `assert` is a thin wrapper over `evaluate` (run, check Boolean true). One service, two operations is a smaller surface. |
-| 8 | `loadIG` is an operation on `FHIRValidator` (not a separate `IGManager` service). | Loading IGs is part of setting up validation. Smaller surface; `listIGs` and `unloadIG` can be added later as new operations on `FHIRValidator` without breaking changes. |
-| 9 | `FHIRPathProcessor.assert`: empty collection → `FAILURE`. | Matches the expectation of invariant-style expressions (`where(...).exists()`). |
-| 10 | `FHIRPathProcessor.evaluate` serialises collections as JSON arrays. | Machine-parseable, preserves element types and values with commas; lossless. |
-| 11 | URL fetch (when enabled) is SSRF-hardened — see §2.4.1 for the full policy (scheme allowlist, RFC1918 denylist, no redirects to private IPs, no credential forwarding, 30 MB cap, timeouts, `-disable-uri-fetch` kill-switch). | SSRF is the standard risk for server-side URL fetchers. Full mitigation by default; operators can disable the feature entirely. |
-| 12 | `overview.version` = validator Maven version. | Simple, accurate, one source of truth. Contract version is expressed by the OpenAPI spec's `info.version`. |
+| 1 | One `createContext` per service rooted at `/itb/<svc>`; ITB appends `getModuleDefinition`, `validate`, `process`, etc. | GITB contract — sub-paths are fixed by the kind of service. |
+| 2 | `loadIG` lives on a separate `IGManager` Processing Service, not on `FHIRValidator`. | The GITB Validation Service contract has exactly one operation (`validate`); extra ops aren't allowed there. |
+| 3 | `FHIRPathAssertion` is a Validation Service (returns TAR), `FHIRPathProcessor` is a Processing Service (returns `output[]`). | An assertion's natural output is a pass/fail TAR; an evaluation's natural output is a value. |
+| 4 | Inputs are AnyContent arrays in `input[]`, not flat `inputs: {key: value}`. | GITB schema. |
+| 5 | Outputs in `ProcessResponse.output[]` are AnyContent items, not a flat string map. | GITB schema. |
+| 6 | The `FHIRValidator.validate` response carries the validated content in `report.context[]` (toggle: `includeContentInReport`, default `true`). | Enables the ITB inline editor + `content:<line>:<col>` location anchors. |
+| 7 | A separate `contentType` input replaces using AnyContent's `mimeType` on inputs (per ITB review). | `mimeType` is an output rendering hint — ambiguous on inputs. |
+| 8 | URL-fetch (`embeddingMethod: URI`) is SSRF-hardened; can be disabled with `-disable-uri-fetch`. | SSRF is the standard risk for server-side URL fetchers. |
+| 9 | `overview.version` = validator Maven version. | Single source of truth; contract version is in OpenAPI's `info.version`. |
 
 ---
 
 ## 9. References
 
 - Companion machine-readable spec: [gitb-openapi.json](org.hl7.fhir.validation/src/main/resources/org/hl7/fhir/validation/http/gitb-openapi.json)
-- GITB validation service REST contract: `gitb-types-development/gitb-types-specs/src/main/resources/rest/gitb_vs.json`
-- GITB processing service REST contract: `gitb-types-development/gitb-types-specs/src/main/resources/rest/gitb_ps.json`
+- GITB Validation Service contract: `gitb-types-development/.../rest/gitb_vs.json` and `schemas/gitb_vs.xsd` / `schemas/gitb_vs.wsdl`
+- GITB Processing Service contract: `gitb-types-development/.../rest/gitb_ps.json` and `schemas/gitb_ps.xsd` / `schemas/gitb_ps.wsdl`
+- GITB core types (AnyContent, Configuration, TypedParameter, TAR): `schemas/gitb_core.xsd`, `schemas/gitb_tr.xsd`
 - Existing native HTTP handlers: `org.hl7.fhir.validation/src/main/java/org/hl7/fhir/validation/http/`
-- ITB REST API (unrelated — admin surface of the ITB itself): `itb-openapi.json`

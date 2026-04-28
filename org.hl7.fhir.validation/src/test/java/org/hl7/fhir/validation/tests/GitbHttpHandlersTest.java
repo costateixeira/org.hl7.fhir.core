@@ -1,5 +1,6 @@
 package org.hl7.fhir.validation.tests;
 
+import org.hl7.fhir.utilities.json.model.JsonArray;
 import org.hl7.fhir.utilities.json.model.JsonElement;
 import org.hl7.fhir.utilities.json.model.JsonObject;
 import org.hl7.fhir.utilities.json.parser.JsonParser;
@@ -24,12 +25,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
 /**
- * Integration tests for the GITB-aligned handlers exposed under {@code /itb/...}.
+ * Integration tests for the GITB-faithful handlers exposed under {@code /itb/...}.
+ * Each handler is one of:
+ *   Validation Service: GET /<svc>/getModuleDefinition + POST /<svc>/validate
+ *   Processing Service: GET /<svc>/getModuleDefinition + POST /<svc>/process + POST /<svc>/beginTransaction + POST /<svc>/endTransaction
  * <p>
- * Each test starts a real {@link FhirValidatorHttpService} bound to loopback. Engine-free
- * paths (definitions, ValidationResultsProcessor, error handling) use a mocked ValidationEngine;
- * paths that exercise the engine are covered by the broader integration test suite in
- * FhirValidatorHttpServiceTests.
+ * Engine-free paths (definitions, ValidationResultsProcessor, error handling)
+ * use a mocked ValidationEngine; engine-bound paths are covered by the broader
+ * suite in {@code FhirValidatorHttpServiceTest}.
  */
 class GitbHttpHandlersTest {
 
@@ -53,40 +56,55 @@ class GitbHttpHandlersTest {
   }
 
   // ------------------------------------------------------------------
-  // GET /itb/<svc>/definition for every service
+  // GET /itb/<svc>/getModuleDefinition for every service
   // ------------------------------------------------------------------
 
   @ParameterizedTest
-  @ValueSource(strings = {"fhir", "fhirpath", "matchetype", "testdata", "validationResults"})
-  void definitionEndpointReturnsServiceDefinition(String svc) throws Exception {
-    HttpResponse<String> response = get("/itb/" + svc + "/definition");
-    assertEquals(200, response.statusCode());
+  @ValueSource(strings = {"fhir", "matchetype", "fhirpathAssertion", "fhirpath", "testdata", "validationResults", "igmanager"})
+  void getModuleDefinitionReturnsModule(String svc) throws Exception {
+    HttpResponse<String> response = get("/itb/" + svc + "/getModuleDefinition");
+    assertEquals(200, response.statusCode(), "for /itb/" + svc + "/getModuleDefinition");
     JsonObject body = JsonParser.parseObject(response.body());
-    assertTrue(body.has("id"), "definition must include id");
-    assertTrue(body.has("operations"), "definition must include operations");
-    assertTrue(body.has("inputs"), "definition must include inputs");
-    assertTrue(body.has("outputs"), "definition must include outputs");
+    assertTrue(body.has("module"), "response must wrap the module: " + body);
+    JsonObject module = body.getJsonObject("module");
+    assertTrue(module.has("id"), "module must include id");
+    assertTrue(module.has("metadata"), "module must include metadata");
   }
 
   @Test
-  void fhirDefinitionListsValidateAndLoadIg() throws Exception {
-    JsonObject body = JsonParser.parseObject(get("/itb/fhir/definition").body());
-    assertEquals("FHIRValidator", body.asString("id"));
-    assertOperations(body, "validate", "loadIG");
+  void fhirModuleIsValidationServiceWithSingleValidateOperation() throws Exception {
+    JsonObject body = JsonParser.parseObject(get("/itb/fhir/getModuleDefinition").body());
+    JsonObject module = body.getJsonObject("module");
+    assertEquals("FHIRValidator", module.asString("id"));
+    assertEquals("validate", module.asString("operation"));
   }
 
   @Test
-  void fhirpathDefinitionListsEvaluateAndAssert() throws Exception {
-    JsonObject body = JsonParser.parseObject(get("/itb/fhirpath/definition").body());
-    assertEquals("FHIRPathProcessor", body.asString("id"));
-    assertOperations(body, "evaluate", "assert");
+  void fhirpathModuleIsProcessingServiceWithEvaluateOperation() throws Exception {
+    JsonObject body = JsonParser.parseObject(get("/itb/fhirpath/getModuleDefinition").body());
+    JsonObject module = body.getJsonObject("module");
+    assertEquals("FHIRPathProcessor", module.asString("id"));
+    JsonArray ops = module.getJsonArray("operation");
+    assertEquals(1, ops.size());
+    assertEquals("evaluate", ops.get(0).asJsonObject().asString("name"));
   }
 
   @Test
-  void validationResultsDefinitionListsAllThreeOperations() throws Exception {
-    JsonObject body = JsonParser.parseObject(get("/itb/validationResults/definition").body());
-    assertEquals("ValidationResultsProcessor", body.asString("id"));
-    assertOperations(body, "summarize", "filterBySeverity", "filterByText");
+  void igManagerModuleHasLoadIgOperation() throws Exception {
+    JsonObject body = JsonParser.parseObject(get("/itb/igmanager/getModuleDefinition").body());
+    JsonObject module = body.getJsonObject("module");
+    assertEquals("IGManager", module.asString("id"));
+    JsonArray ops = module.getJsonArray("operation");
+    assertEquals(1, ops.size());
+    assertEquals("loadIG", ops.get(0).asJsonObject().asString("name"));
+  }
+
+  @Test
+  void validationResultsModuleListsAllThreeOperations() throws Exception {
+    JsonObject body = JsonParser.parseObject(get("/itb/validationResults/getModuleDefinition").body());
+    JsonObject module = body.getJsonObject("module");
+    assertEquals("ValidationResultsProcessor", module.asString("id"));
+    assertOperations(module, "summarize", "filterBySeverity", "filterByText");
   }
 
   // ------------------------------------------------------------------
@@ -101,14 +119,12 @@ class GitbHttpHandlersTest {
       + "{\"severity\":\"warning\",\"code\":\"informational\"},"
       + "{\"severity\":\"information\",\"code\":\"informational\"}"
       + "]}";
-    JsonObject inputs = new JsonObject();
-    inputs.add("outcome", outcome);
-    JsonObject response = postOperation("/itb/validationResults/process", "summarize", inputs);
-    assertEquals("SUCCESS", response.asString("result"));
-    JsonObject output = response.getJsonObject("output");
-    assertEquals("2", output.asString("errors"));
-    assertEquals("1", output.asString("warnings"));
-    assertEquals("1", output.asString("information"));
+    JsonObject response = postProcess("/itb/validationResults/process", "summarize",
+      anyContent("outcome", outcome));
+    JsonArray output = response.getJsonArray("output");
+    assertEquals("2", outputValue(output, "errors"));
+    assertEquals("1", outputValue(output, "warnings"));
+    assertEquals("1", outputValue(output, "information"));
   }
 
   @Test
@@ -117,14 +133,12 @@ class GitbHttpHandlersTest {
       + "{\"severity\":\"error\",\"code\":\"invalid\",\"details\":{\"text\":\"a\"}},"
       + "{\"severity\":\"warning\",\"code\":\"informational\",\"details\":{\"text\":\"b\"}}"
       + "]}";
-    JsonObject inputs = new JsonObject();
-    inputs.add("outcome", outcome);
-    inputs.add("severity", "error");
-    JsonObject response = postOperation("/itb/validationResults/process", "filterBySeverity", inputs);
-    assertEquals("SUCCESS", response.asString("result"));
-    JsonObject output = response.getJsonObject("output");
-    assertEquals("1", output.asString("count"));
-    JsonObject filtered = JsonParser.parseObject(output.asString("outcome"));
+    JsonObject response = postProcess("/itb/validationResults/process", "filterBySeverity",
+      anyContent("outcome", outcome),
+      anyContent("severity", "error"));
+    JsonArray output = response.getJsonArray("output");
+    assertEquals("1", outputValue(output, "count"));
+    JsonObject filtered = JsonParser.parseObject(outputValue(output, "outcome"));
     assertEquals(1, filtered.getJsonArray("issue").size());
   }
 
@@ -134,12 +148,29 @@ class GitbHttpHandlersTest {
       + "{\"severity\":\"error\",\"details\":{\"text\":\"identifier system missing\"}},"
       + "{\"severity\":\"error\",\"details\":{\"text\":\"name required\"}}"
       + "]}";
-    JsonObject inputs = new JsonObject();
-    inputs.add("outcome", outcome);
-    inputs.add("text", "identifier");
-    JsonObject response = postOperation("/itb/validationResults/process", "filterByText", inputs);
-    JsonObject output = response.getJsonObject("output");
-    assertEquals("1", output.asString("count"));
+    JsonObject response = postProcess("/itb/validationResults/process", "filterByText",
+      anyContent("outcome", outcome),
+      anyContent("text", "identifier"));
+    assertEquals("1", outputValue(response.getJsonArray("output"), "count"));
+  }
+
+  // ------------------------------------------------------------------
+  // Processing service lifecycle
+  // ------------------------------------------------------------------
+
+  @Test
+  void beginTransactionReturnsSessionId() throws Exception {
+    HttpResponse<String> response = post("/itb/validationResults/beginTransaction", "{}");
+    assertEquals(200, response.statusCode());
+    JsonObject body = JsonParser.parseObject(response.body());
+    assertTrue(body.has("sessionId"), "must include sessionId");
+    assertThat(body.asString("sessionId")).isNotBlank();
+  }
+
+  @Test
+  void endTransactionReturnsNoContent() throws Exception {
+    HttpResponse<String> response = post("/itb/validationResults/endTransaction", "{}");
+    assertEquals(204, response.statusCode());
   }
 
   // ------------------------------------------------------------------
@@ -147,44 +178,28 @@ class GitbHttpHandlersTest {
   // ------------------------------------------------------------------
 
   @Test
-  void processReturns400WhenOperationFieldIsMissing() throws Exception {
-    HttpResponse<String> response = post("/itb/validationResults/process", "{\"inputs\":{}}");
-    assertEquals(400, response.statusCode());
-    JsonObject body = JsonParser.parseObject(response.body());
-    assertEquals("FAILURE", body.asString("result"));
-    assertThat(body.asString("error")).contains("operation");
-  }
-
-  @Test
   void processReturns400WhenRequiredInputIsMissing() throws Exception {
-    JsonObject inputs = new JsonObject();
-    // outcome is required for summarize but is missing
-    HttpResponse<String> response = post("/itb/validationResults/process",
-      JsonParser.compose(processBody("summarize", inputs)));
+    JsonObject body = processRequestBody("summarize"); // no input array — outcome is required
+    HttpResponse<String> response = post("/itb/validationResults/process", JsonParser.compose(body));
     assertEquals(400, response.statusCode());
-    JsonObject body = JsonParser.parseObject(response.body());
-    assertEquals("FAILURE", body.asString("result"));
-    assertThat(body.asString("error")).contains("Missing required input");
+    JsonObject json = JsonParser.parseObject(response.body());
+    assertThat(json.asString("error")).contains("Missing required input");
   }
 
   @Test
   void processReturns400ForUnknownOperation() throws Exception {
-    JsonObject inputs = new JsonObject();
-    HttpResponse<String> response = post("/itb/validationResults/process",
-      JsonParser.compose(processBody("totallyMadeUpOperation", inputs)));
+    JsonObject body = processRequestBody("totallyMadeUp",
+      anyContent("outcome", "{\"resourceType\":\"OperationOutcome\"}"));
+    HttpResponse<String> response = post("/itb/validationResults/process", JsonParser.compose(body));
     assertEquals(400, response.statusCode());
-    JsonObject body = JsonParser.parseObject(response.body());
-    assertEquals("FAILURE", body.asString("result"));
-    assertThat(body.asString("error")).contains("Unknown operation");
+    assertThat(JsonParser.parseObject(response.body()).asString("error")).contains("Unknown operation");
   }
 
   @Test
   void processReturns400OnMalformedJson() throws Exception {
     HttpResponse<String> response = post("/itb/validationResults/process", "{not valid json");
     assertEquals(400, response.statusCode());
-    JsonObject body = JsonParser.parseObject(response.body());
-    assertEquals("FAILURE", body.asString("result"));
-    assertThat(body.asString("error")).contains("Malformed JSON");
+    assertThat(JsonParser.parseObject(response.body()).asString("error")).contains("Malformed JSON");
   }
 
   @Test
@@ -193,18 +208,60 @@ class GitbHttpHandlersTest {
     assertEquals(404, response.statusCode());
   }
 
+  @Test
+  void definitionRequestUsingOldPathReturns404() throws Exception {
+    // Sanity: the old /<svc>/definition path is gone; only /<svc>/getModuleDefinition works.
+    HttpResponse<String> response = get("/itb/fhir/definition");
+    assertEquals(404, response.statusCode());
+  }
+
   // ------------------------------------------------------------------
   // Helpers
   // ------------------------------------------------------------------
 
-  private static void assertOperations(JsonObject definition, String... expected) {
-    JsonObject ops = new JsonObject();
-    for (String op : expected) ops.add(op, true);
-    for (JsonElement el : definition.getJsonArray("operations")) {
-      String name = el.asString();
-      ops.remove(name);
+  private static JsonObject anyContent(String name, String value) {
+    JsonObject ac = new JsonObject();
+    ac.add("name", name);
+    ac.add("value", value);
+    ac.add("embeddingMethod", "STRING");
+    return ac;
+  }
+
+  private static JsonObject processRequestBody(String operation, JsonObject... inputs) {
+    JsonObject body = new JsonObject();
+    if (operation != null) body.add("operation", operation);
+    JsonArray arr = new JsonArray();
+    for (JsonObject ac : inputs) arr.add(ac);
+    body.add("input", arr);
+    return body;
+  }
+
+  private static JsonObject validateRequestBody(JsonObject... inputs) {
+    JsonObject body = new JsonObject();
+    JsonArray arr = new JsonArray();
+    for (JsonObject ac : inputs) arr.add(ac);
+    body.add("input", arr);
+    return body;
+  }
+
+  private static String outputValue(JsonArray output, String name) {
+    for (JsonElement el : output) {
+      if (!el.isJsonObject()) continue;
+      JsonObject ac = el.asJsonObject();
+      if (name.equals(ac.asString("name"))) return ac.asString("value");
     }
-    assertTrue(ops.getProperties().isEmpty(), "Expected operations missing: " + ops);
+    return null;
+  }
+
+  private static void assertOperations(JsonObject module, String... expected) {
+    JsonArray ops = module.getJsonArray("operation");
+    java.util.Set<String> seen = new java.util.HashSet<>();
+    for (JsonElement el : ops) {
+      seen.add(el.asJsonObject().asString("name"));
+    }
+    for (String op : expected) {
+      assertTrue(seen.contains(op), "missing operation: " + op + " (got " + seen + ")");
+    }
   }
 
   private HttpResponse<String> get(String path) throws IOException, InterruptedException {
@@ -223,18 +280,10 @@ class GitbHttpHandlersTest {
       HttpResponse.BodyHandlers.ofString());
   }
 
-  private JsonObject postOperation(String path, String operation, JsonObject inputs) throws IOException, InterruptedException {
-    JsonObject body = processBody(operation, inputs);
+  private JsonObject postProcess(String path, String operation, JsonObject... inputs) throws IOException, InterruptedException {
+    JsonObject body = processRequestBody(operation, inputs);
     HttpResponse<String> response = post(path, JsonParser.compose(body));
     assertEquals(200, response.statusCode(), "Expected 200 OK, got " + response.statusCode() + ": " + response.body());
     return JsonParser.parseObject(response.body());
   }
-
-  private static JsonObject processBody(String operation, JsonObject inputs) {
-    JsonObject body = new JsonObject();
-    body.add("operation", operation);
-    body.add("inputs", inputs);
-    return body;
-  }
-
 }

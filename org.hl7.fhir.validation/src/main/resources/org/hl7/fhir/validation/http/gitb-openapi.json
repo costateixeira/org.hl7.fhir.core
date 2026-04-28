@@ -1,512 +1,356 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "FHIR Validator — GITB REST Processing Services",
-    "description": "GITB-compatible REST processing service endpoints for the HL7 FHIR Validator.\nEach service exposes GET /definition (metadata) and POST /process (execute).\nAll input/output values are strings. JSON objects (FHIR resources) are passed as stringified JSON.",
-    "version": "1.0.0",
+    "title": "FHIR Validator — GITB REST services",
+    "description": "GITB-faithful REST services exposed by the HL7 FHIR Validator under `/itb/`.\n\nThe shapes mirror the GITB schemas (`gitb_vs.xsd`, `gitb_ps.xsd`):\n- Validation services expose `GET /<svc>/getModuleDefinition` and `POST /<svc>/validate`.\n- Processing services expose `GET /<svc>/getModuleDefinition`, `POST /<svc>/process`, `POST /<svc>/beginTransaction`, `POST /<svc>/endTransaction`.\n\nAll inputs and outputs are arrays of `AnyContent` items. The handler URI is the service root (e.g. `/itb/fhir`); ITB knows the operation names from the GITB contract and appends them as sub-paths.",
+    "version": "2.0.0",
     "contact": {
       "name": "HL7 FHIR Core Team",
       "url": "https://github.com/hapifhir/org.hl7.fhir.core"
     }
   },
   "servers": [
-    { "url": "http://localhost:8080/itb", "description": "Local development server" }
+    { "url": "http://localhost:8080/itb", "description": "Local development server (paths in this spec are relative to /itb)" }
   ],
+  "tags": [
+    { "name": "FHIRValidator",            "description": "Validation service — validates a FHIR resource against base + profiles." },
+    { "name": "MatchetypeValidator",      "description": "Validation service — compares a resource against an expected matchetype pattern." },
+    { "name": "FHIRPathAssertion",        "description": "Validation service — asserts a FHIRPath expression evaluates to true." },
+    { "name": "FHIRPathProcessor",        "description": "Processing service — evaluates a FHIRPath expression and returns the value." },
+    { "name": "TestDataGenerator",        "description": "Processing service — synthesises FHIR resources from a profile + optional mappings/data." },
+    { "name": "ValidationResultsProcessor", "description": "Processing service — summarises and filters a FHIR OperationOutcome (no engine call)." },
+    { "name": "IGManager",                "description": "Processing service — loads FHIR Implementation Guide packages into the engine." }
+  ],
+
   "paths": {
-    "/fhirpath/definition": {
+    "/fhir/getModuleDefinition": {
       "get": {
-        "tags": ["FHIRPath"],
-        "summary": "FHIRPathProcessor — service definition",
-        "operationId": "fhirpathDefinition",
-        "description": "Returns GITB service metadata.\n\nService id: `FHIRPathProcessor`\nOperations: `evaluate`, `assert`\n\n`assert` is a special case of `evaluate` where the expression is expected to evaluate to a boolean. The operation reports `SUCCESS` only when the result is `true`; a `false` result yields `FAILURE`. Any non-boolean result also yields `FAILURE`.\n\n**Inputs:**\n| Name | Type | Required |\n|------|------|----------|\n| content | string (FHIR JSON) | yes |\n| expression | string (FHIRPath) | yes |\n\n**Outputs:**\n| Name | Type |\n|------|------|\n| result | string (evaluate: stringified value; assert: `true`/`false`) |",
-        "responses": {
-          "200": { "description": "Service definition", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ServiceDefinition" } } } }
-        }
+        "tags": ["FHIRValidator"],
+        "summary": "FHIRValidator service definition",
+        "operationId": "fhirGetModuleDefinition",
+        "responses": { "200": { "description": "Module definition", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GetModuleDefinitionResponse" } } } } }
+      }
+    },
+    "/fhir/validate": {
+      "post": {
+        "tags": ["FHIRValidator"],
+        "summary": "Validate a FHIR resource",
+        "operationId": "fhirValidate",
+        "description": "Inputs (in `input[]`):\n- `contentToValidate` (required)\n- `contentType` (default `application/fhir+json`)\n- `profiles` (comma-separated canonical URLs)\n- `bpWarnings`, `resourceIdRule`, `displayWarnings`, `failOn`, `includeContentInReport` (optional)\n\nReturns a TAR with the OperationOutcome and (optionally) the validated content in `report.context`.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ValidateRequest" } } } },
+        "responses": { "200": { "description": "Validation result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ValidationResponse" } } } } }
+      }
+    },
+
+    "/matchetype/getModuleDefinition": {
+      "get": {
+        "tags": ["MatchetypeValidator"],
+        "summary": "MatchetypeValidator service definition",
+        "operationId": "matchetypeGetModuleDefinition",
+        "responses": { "200": { "description": "Module definition", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GetModuleDefinitionResponse" } } } } }
+      }
+    },
+    "/matchetype/validate": {
+      "post": {
+        "tags": ["MatchetypeValidator"],
+        "summary": "Compare a resource against an expected matchetype pattern",
+        "operationId": "matchetypeValidate",
+        "description": "Inputs (in `input[]`): `contentToValidate`, `matchetype`, optional `mode` (`complete`|`partial`).",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ValidateRequest" } } } },
+        "responses": { "200": { "description": "Comparison result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ValidationResponse" } } } } }
+      }
+    },
+
+    "/fhirpathAssertion/getModuleDefinition": {
+      "get": {
+        "tags": ["FHIRPathAssertion"],
+        "summary": "FHIRPathAssertion service definition",
+        "operationId": "fhirpathAssertionGetModuleDefinition",
+        "responses": { "200": { "description": "Module definition", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GetModuleDefinitionResponse" } } } } }
+      }
+    },
+    "/fhirpathAssertion/validate": {
+      "post": {
+        "tags": ["FHIRPathAssertion"],
+        "summary": "Assert that a FHIRPath expression evaluates to true",
+        "operationId": "fhirpathAssertionValidate",
+        "description": "Inputs (in `input[]`): `contentToValidate` (the resource), `expression` (the FHIRPath expression — should yield singleton Boolean), optional `description`.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ValidateRequest" } } } },
+        "responses": { "200": { "description": "Assertion result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ValidationResponse" } } } } }
+      }
+    },
+
+    "/fhirpath/getModuleDefinition": {
+      "get": {
+        "tags": ["FHIRPathProcessor"],
+        "summary": "FHIRPathProcessor service definition",
+        "operationId": "fhirpathGetModuleDefinition",
+        "responses": { "200": { "description": "Module definition", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GetModuleDefinitionResponse" } } } } }
       }
     },
     "/fhirpath/process": {
       "post": {
-        "tags": ["FHIRPath"],
-        "summary": "Evaluate or assert a FHIRPath expression",
+        "tags": ["FHIRPathProcessor"],
+        "summary": "Evaluate a FHIRPath expression",
         "operationId": "fhirpathProcess",
-        "description": "**evaluate:** Evaluates `inputs.expression` against `inputs.content` (stringified FHIR JSON). Returns the first result as a string. Booleans return `true`/`false`.\n\n**assert:** Same evaluation, but the expression must yield a boolean. `result: SUCCESS` only when the value is `true`; `false` (or a non-boolean result) yields `result: FAILURE`.",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["operation", "inputs"],
-                "properties": {
-                  "operation": { "type": "string", "enum": ["evaluate", "assert"] },
-                  "inputs": {
-                    "type": "object",
-                    "required": ["content", "expression"],
-                    "properties": {
-                      "content": { "type": "string", "description": "FHIR resource (or other FHIRPath context) as stringified JSON" },
-                      "expression": { "type": "string", "description": "FHIRPath expression" }
-                    }
-                  }
-                }
-              },
-              "examples": {
-                "evaluate": {
-                  "summary": "Read a value out of a resource",
-                  "value": { "operation": "evaluate", "inputs": { "content": "{\"resourceType\":\"Patient\",\"name\":[{\"family\":\"Smith\"}]}", "expression": "Patient.name.family" } }
-                },
-                "assert": {
-                  "summary": "Check a boolean expression",
-                  "value": { "operation": "assert", "inputs": { "content": "{\"resourceType\":\"Patient\",\"name\":[{\"family\":\"Smith\"}]}", "expression": "Patient.name.family = 'Smith'" } }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Result",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/ProcessResponse" },
-                "examples": {
-                  "evaluate": { "summary": "evaluate result", "value": { "result": "SUCCESS", "output": { "result": "Smith" } } },
-                  "assert": { "summary": "assert succeeded", "value": { "result": "SUCCESS", "output": { "result": "true" } } }
-                }
-              }
-            }
-          }
-        }
+        "description": "Operation: `evaluate`. Inputs (in `input[]`): `content`, `expression`. Output: `result` (stringified value).",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProcessRequest" } } } },
+        "responses": { "200": { "description": "Result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProcessResponse" } } } } }
       }
     },
-    "/fhir/definition": {
+    "/fhirpath/beginTransaction": { "post": { "tags": ["FHIRPathProcessor"], "summary": "Begin a (no-op) transaction", "operationId": "fhirpathBegin", "responses": { "200": { "description": "Session id", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BeginTransactionResponse" } } } } } } },
+    "/fhirpath/endTransaction":   { "post": { "tags": ["FHIRPathProcessor"], "summary": "End a (no-op) transaction",   "operationId": "fhirpathEnd",   "responses": { "204": { "description": "No content" } } } },
+
+    "/testdata/getModuleDefinition": {
       "get": {
-        "tags": ["Validator"],
-        "summary": "FHIRValidator — service definition",
-        "operationId": "fhirDefinition",
-        "description": "Returns GITB service metadata.\n\nService id: `FHIRValidator`\nOperations: `validate`, `loadIG`\n\n**Inputs:**\n| Name | Type | Required | Used by |\n|------|------|----------|---------|\n| content | string (FHIR JSON/XML/Turtle) | yes (validate) | validate |\n| contentType | string (MIME type) | no (default `application/fhir+json`) | validate |\n| profiles | string (comma-separated URLs) | no | validate |\n| ig | string (package#version) | yes (loadIG) | loadIG |\n| bpWarnings | Ignore/Hint/Warning/Error | no | validate |\n| resourceIdRule | OPTIONAL/REQUIRED/PROHIBITED | no | validate |\n| includeContentInReport | boolean (default `true`) | no | validate |\n\n**Outputs:**\n| Name | Type |\n|------|------|\n| outcome | string (OperationOutcome JSON) |\n| severity | error/warning/information |\n| errors | string (count) |\n| warnings | string (count) |\n\nValidation issues → `result: SUCCESS` with counts. `FAILURE` only for infrastructure errors.",
-        "responses": {
-          "200": { "description": "Service definition", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ServiceDefinition" } } } }
-        }
-      }
-    },
-    "/fhir/process": {
-      "post": {
-        "tags": ["Validator"],
-        "summary": "Validate a resource or load an IG",
-        "operationId": "fhirProcess",
-        "description": "**validate:** Validates `inputs.content` against `inputs.profiles`. The `inputs.contentType` selects the wire format (default `application/fhir+json`).\n\n**loadIG:** Loads `inputs.ig` (e.g. `hl7.fhir.be.medication#1.1.0`).",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["operation", "inputs"],
-                "properties": {
-                  "operation": { "type": "string", "enum": ["validate", "loadIG"] },
-                  "inputs": {
-                    "type": "object",
-                    "properties": {
-                      "content": { "type": "string", "description": "FHIR resource as a string in the format named by `contentType` (for validate)" },
-                      "contentType": {
-                        "type": "string",
-                        "description": "MIME type of `content` (for validate). Optional; defaults to `application/fhir+json`.",
-                        "enum": ["application/fhir+json", "application/fhir+xml", "text/turtle"],
-                        "default": "application/fhir+json"
-                      },
-                      "profiles": { "type": "string", "description": "Comma-separated profile URLs (for validate)" },
-                      "ig": { "type": "string", "description": "IG package e.g. hl7.fhir.be.core#2.1.2 (for loadIG)" },
-                      "bpWarnings": { "type": "string", "enum": ["Ignore", "Hint", "Warning", "Error"] },
-                      "resourceIdRule": { "type": "string", "enum": ["OPTIONAL", "REQUIRED", "PROHIBITED"] },
-                      "includeContentInReport": {
-                        "type": "boolean",
-                        "description": "If true (default), the validated content is echoed back in the TAR report context so the ITB can show it inline alongside findings.",
-                        "default": true
-                      }
-                    }
-                  }
-                }
-              },
-              "examples": {
-                "validate": {
-                  "summary": "Validate a Patient",
-                  "value": { "operation": "validate", "inputs": { "content": "{\"resourceType\":\"Patient\",\"name\":[{\"family\":\"Smith\"}]}", "profiles": "http://hl7.org/fhir/StructureDefinition/Patient" } }
-                },
-                "validateXml": {
-                  "summary": "Validate an XML resource",
-                  "value": { "operation": "validate", "inputs": { "content": "<Patient xmlns=\"http://hl7.org/fhir\"><name><family value=\"Smith\"/></name></Patient>", "contentType": "application/fhir+xml" } }
-                },
-                "loadIG": {
-                  "summary": "Load Belgian core IG",
-                  "value": { "operation": "loadIG", "inputs": { "ig": "hl7.fhir.be.core#2.1.2" } }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Validation result. The body is a `ValidationResponse` carrying both a flat summary and a full TAR report with context items. `loadIG` returns a plain `ProcessResponse` shape (no TAR).",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/ValidationResponse" },
-                "examples": {
-                  "validateClean": {
-                    "summary": "Successful validation, content echoed in report context",
-                    "value": {
-                      "result": "SUCCESS",
-                      "output": { "outcome": "{\"resourceType\":\"OperationOutcome\",\"issue\":[]}", "severity": "information", "errors": "0", "warnings": "0" },
-                      "report": {
-                        "id": "5b9b5e0c-2e2e-4c1b-9d6f-1f9c4f3a1abc",
-                        "date": "2026-04-27T12:00:00Z",
-                        "result": "SUCCESS",
-                        "counters": { "nrOfErrors": 0, "nrOfWarnings": 0, "nrOfAssertions": 0 },
-                        "overview": { "name": "HL7 FHIR Validator", "version": "6.9.8-SNAPSHOT" },
-                        "items": [],
-                        "context": [
-                          {
-                            "name": "operationOutcome",
-                            "value": "{\"resourceType\":\"OperationOutcome\",\"issue\":[]}",
-                            "embeddingMethod": "STRING",
-                            "type": "string",
-                            "mimeType": "application/fhir+json",
-                            "forContext": true,
-                            "forReport": true
-                          },
-                          {
-                            "name": "content",
-                            "value": "{\"resourceType\":\"Patient\",\"name\":[{\"family\":\"Smith\"}]}",
-                            "embeddingMethod": "STRING",
-                            "type": "string",
-                            "mimeType": "application/fhir+json",
-                            "forContext": true,
-                            "forReport": true
-                          }
-                        ]
-                      }
-                    }
-                  },
-                  "validateWithError": {
-                    "summary": "Validation finds a line-anchored error",
-                    "value": {
-                      "result": "FAILURE",
-                      "output": { "outcome": "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"invalid\",\"details\":{\"text\":\"Patient.name.family is required\"}}]}", "severity": "error", "errors": "1", "warnings": "0" },
-                      "report": {
-                        "id": "8c1d2c4a-9d6f-4f1b-92e1-3c2a1f9b1def",
-                        "date": "2026-04-27T12:00:00Z",
-                        "result": "FAILURE",
-                        "counters": { "nrOfErrors": 1, "nrOfWarnings": 0, "nrOfAssertions": 0 },
-                        "overview": { "name": "HL7 FHIR Validator", "version": "6.9.8-SNAPSHOT" },
-                        "items": [
-                          { "level": "ERROR", "description": "Patient.name.family is required", "location": "content:3:5", "type": "invalid" }
-                        ],
-                        "context": [
-                          {
-                            "name": "operationOutcome",
-                            "value": "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"invalid\",\"details\":{\"text\":\"Patient.name.family is required\"}}]}",
-                            "embeddingMethod": "STRING",
-                            "type": "string",
-                            "mimeType": "application/fhir+json",
-                            "forContext": true,
-                            "forReport": true
-                          },
-                          {
-                            "name": "content",
-                            "value": "{\n  \"resourceType\": \"Patient\",\n  \"name\": [{}]\n}",
-                            "embeddingMethod": "STRING",
-                            "type": "string",
-                            "mimeType": "application/fhir+json",
-                            "forContext": true,
-                            "forReport": true
-                          }
-                        ]
-                      }
-                    }
-                  },
-                  "loadIG": {
-                    "summary": "loadIG (no TAR)",
-                    "value": { "result": "SUCCESS", "output": { "loaded": "hl7.fhir.be.core#2.1.2" } }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/matchetype/definition": {
-      "get": {
-        "tags": ["Matchetype"],
-        "summary": "MatchetypeProcessor — service definition",
-        "operationId": "matchetypeDefinition",
-        "description": "Returns GITB service metadata.\n\nService id: `MatchetypeProcessor`\nOperation: `compare`\n\n**Inputs:**\n| Name | Type | Required |\n|------|------|----------|\n| resource | string (FHIR JSON) | yes |\n| matchetype | string (FHIR JSON pattern) | yes |\n| mode | complete/partial | no (default: complete) |\n\n**Outputs:**\n| Name | Type |\n|------|------|\n| outcome | string (OperationOutcome JSON) |\n| severity | information (match) or error (mismatch) |",
-        "responses": {
-          "200": { "description": "Service definition", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ServiceDefinition" } } } }
-        }
-      }
-    },
-    "/matchetype/process": {
-      "post": {
-        "tags": ["Matchetype"],
-        "summary": "Compare resource against a pattern",
-        "operationId": "matchetypeProcess",
-        "description": "Compares `inputs.resource` against `inputs.matchetype`. Both stringified FHIR JSON.",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["operation", "inputs"],
-                "properties": {
-                  "operation": { "type": "string", "enum": ["compare"] },
-                  "inputs": {
-                    "type": "object",
-                    "required": ["resource", "matchetype"],
-                    "properties": {
-                      "resource": { "type": "string", "description": "Actual FHIR resource as stringified JSON" },
-                      "matchetype": { "type": "string", "description": "Expected pattern as stringified JSON" },
-                      "mode": { "type": "string", "enum": ["complete", "partial"], "default": "complete" }
-                    }
-                  }
-                }
-              },
-              "example": {
-                "operation": "compare",
-                "inputs": {
-                  "resource": "{\"resourceType\":\"Patient\",\"name\":[{\"family\":\"Smith\"}]}",
-                  "matchetype": "{\"resourceType\":\"Patient\",\"name\":[{\"family\":\"Smith\"}]}"
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": { "description": "Comparison result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProcessResponse" } } } }
-        }
-      }
-    },
-    "/testdata/definition": {
-      "get": {
-        "tags": ["Test Data"],
-        "summary": "TestDataGenerator — service definition",
-        "operationId": "testdataDefinition",
-        "description": "Returns GITB service metadata.\n\nService id: `TestDataGenerator`\nOperations: `generate`, `generateBundle`\n\n**Inputs:**\n| Name | Type | Required |\n|------|------|----------|\n| profile | string (canonical URL) | yes |\n| mappings | string (JSON array) | no |\n| data | string (JSON array) | no |\n\n**Outputs:**\n| Name | Type |\n|------|------|\n| resource | string (FHIR JSON) |",
-        "responses": {
-          "200": { "description": "Service definition", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ServiceDefinition" } } } }
-        }
+        "tags": ["TestDataGenerator"],
+        "summary": "TestDataGenerator service definition",
+        "operationId": "testdataGetModuleDefinition",
+        "responses": { "200": { "description": "Module definition", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GetModuleDefinitionResponse" } } } } }
       }
     },
     "/testdata/process": {
       "post": {
-        "tags": ["Test Data"],
+        "tags": ["TestDataGenerator"],
         "summary": "Generate test data from a profile",
         "operationId": "testdataProcess",
-        "description": "**generate:** Single resource from `inputs.profile`.\n**generateBundle:** Same, wrapped in a Bundle.",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["operation", "inputs"],
-                "properties": {
-                  "operation": { "type": "string", "enum": ["generate", "generateBundle"] },
-                  "inputs": {
-                    "type": "object",
-                    "required": ["profile"],
-                    "properties": {
-                      "profile": { "type": "string", "description": "Canonical URL of the StructureDefinition" },
-                      "mappings": { "type": "string", "description": "Stringified JSON array of mapping objects" },
-                      "data": { "type": "string", "description": "Stringified JSON array of data row objects" }
-                    }
-                  }
-                }
-              },
-              "example": { "operation": "generate", "inputs": { "profile": "http://hl7.org/fhir/StructureDefinition/Patient" } }
-            }
-          }
-        },
-        "responses": {
-          "200": { "description": "Generated resource", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProcessResponse" } } } }
-        }
+        "description": "Operations: `generate`, `generateBundle`. Inputs (in `input[]`): `profile` (canonical URL), optional `mappings` and `data` (stringified JSON arrays). Output: `resource` (stringified FHIR JSON).",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProcessRequest" } } } },
+        "responses": { "200": { "description": "Generated resource", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProcessResponse" } } } } }
       }
     },
-    "/validationResults/definition": {
+    "/testdata/beginTransaction": { "post": { "tags": ["TestDataGenerator"], "summary": "Begin a (no-op) transaction", "operationId": "testdataBegin", "responses": { "200": { "description": "Session id", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BeginTransactionResponse" } } } } } } },
+    "/testdata/endTransaction":   { "post": { "tags": ["TestDataGenerator"], "summary": "End a (no-op) transaction",   "operationId": "testdataEnd",   "responses": { "204": { "description": "No content" } } } },
+
+    "/validationResults/getModuleDefinition": {
       "get": {
-        "tags": ["Validation Results"],
-        "summary": "ValidationResultsProcessor — service definition",
-        "operationId": "validationResultsDefinition",
-        "description": "Returns GITB service metadata. Pure JSON utility — no FHIR engine needed.\n\nService id: `ValidationResultsProcessor`\nOperations: `summarize`, `filterBySeverity`, `filterByText`\n\n**Inputs:**\n| Name | Type | Required | Used by |\n|------|------|----------|---------|\n| outcome | string (OperationOutcome JSON) | yes | all |\n| severity | fatal/error/warning/information | yes | filterBySeverity |\n| text | string | yes | filterByText |\n\n**Outputs:**\n| Name | Type | Returned by |\n|------|------|-------------|\n| errors | string (count) | summarize |\n| warnings | string (count) | summarize |\n| count | string (count) | filterBySeverity, filterByText |",
-        "responses": {
-          "200": { "description": "Service definition", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ServiceDefinition" } } } }
-        }
+        "tags": ["ValidationResultsProcessor"],
+        "summary": "ValidationResultsProcessor service definition",
+        "operationId": "validationResultsGetModuleDefinition",
+        "responses": { "200": { "description": "Module definition", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GetModuleDefinitionResponse" } } } } }
       }
     },
     "/validationResults/process": {
       "post": {
-        "tags": ["Validation Results"],
-        "summary": "Summarize or filter validation results",
+        "tags": ["ValidationResultsProcessor"],
+        "summary": "Summarise / filter a FHIR OperationOutcome",
         "operationId": "validationResultsProcess",
-        "description": "**summarize:** Counts errors/warnings in `inputs.outcome`.\n**filterBySeverity:** Counts issues matching `inputs.severity`.\n**filterByText:** Counts issues where details.text contains `inputs.text`.",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["operation", "inputs"],
-                "properties": {
-                  "operation": { "type": "string", "enum": ["summarize", "filterBySeverity", "filterByText"] },
-                  "inputs": {
-                    "type": "object",
-                    "required": ["outcome"],
-                    "properties": {
-                      "outcome": { "type": "string", "description": "OperationOutcome as stringified JSON" },
-                      "severity": { "type": "string", "enum": ["fatal", "error", "warning", "information"], "description": "For filterBySeverity" },
-                      "text": { "type": "string", "description": "For filterByText: substring to match" }
-                    }
-                  }
-                }
-              },
-              "examples": {
-                "summarize": { "summary": "Count errors and warnings", "value": { "operation": "summarize", "inputs": { "outcome": "{\"resourceType\":\"OperationOutcome\",\"issue\":[{\"severity\":\"error\",\"code\":\"invalid\",\"details\":{\"text\":\"Bad\"}}]}" } } },
-                "filterBySeverity": { "summary": "Count error-level issues", "value": { "operation": "filterBySeverity", "inputs": { "outcome": "{\"resourceType\":\"OperationOutcome\",\"issue\":[...]}", "severity": "error" } } },
-                "filterByText": { "summary": "Count issues mentioning identifier", "value": { "operation": "filterByText", "inputs": { "outcome": "{\"resourceType\":\"OperationOutcome\",\"issue\":[...]}", "text": "identifier" } } }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Result",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/ProcessResponse" },
-                "example": { "result": "SUCCESS", "output": { "errors": "1", "warnings": "0" } }
-              }
-            }
-          }
-        }
+        "description": "Operations: `summarize`, `filterBySeverity`, `filterByText`. Pure JSON utility — no FHIR engine call. Inputs (in `input[]`): `outcome` (OperationOutcome JSON); plus `severity` (filterBySeverity) or `text` (filterByText).",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProcessRequest" } } } },
+        "responses": { "200": { "description": "Result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProcessResponse" } } } } }
       }
-    }
+    },
+    "/validationResults/beginTransaction": { "post": { "tags": ["ValidationResultsProcessor"], "summary": "Begin a (no-op) transaction", "operationId": "validationResultsBegin", "responses": { "200": { "description": "Session id", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BeginTransactionResponse" } } } } } } },
+    "/validationResults/endTransaction":   { "post": { "tags": ["ValidationResultsProcessor"], "summary": "End a (no-op) transaction",   "operationId": "validationResultsEnd",   "responses": { "204": { "description": "No content" } } } },
+
+    "/igmanager/getModuleDefinition": {
+      "get": {
+        "tags": ["IGManager"],
+        "summary": "IGManager service definition",
+        "operationId": "igmanagerGetModuleDefinition",
+        "responses": { "200": { "description": "Module definition", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GetModuleDefinitionResponse" } } } } }
+      }
+    },
+    "/igmanager/process": {
+      "post": {
+        "tags": ["IGManager"],
+        "summary": "Load a FHIR Implementation Guide package",
+        "operationId": "igmanagerProcess",
+        "description": "Operation: `loadIG`. Idempotent — re-loading an already-loaded package is a no-op. Input (in `input[]`): `ig` (e.g. `hl7.fhir.be.core#2.1.2`). Output: `loaded` (the resolved `package#version`).",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProcessRequest" } } } },
+        "responses": { "200": { "description": "Result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProcessResponse" } } } } }
+      }
+    },
+    "/igmanager/beginTransaction": { "post": { "tags": ["IGManager"], "summary": "Begin a (no-op) transaction", "operationId": "igmanagerBegin", "responses": { "200": { "description": "Session id", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BeginTransactionResponse" } } } } } } },
+    "/igmanager/endTransaction":   { "post": { "tags": ["IGManager"], "summary": "End a (no-op) transaction",   "operationId": "igmanagerEnd",   "responses": { "204": { "description": "No content" } } } }
   },
+
   "components": {
     "schemas": {
-      "ServiceDefinition": {
+
+      "AnyContent": {
         "type": "object",
-        "description": "GITB service definition",
+        "description": "GITB AnyContent — typed payload used in `input[]`, `output[]`, and TAR `context[]`.",
+        "required": ["name", "value"],
         "properties": {
-          "id": { "type": "string", "description": "Service identifier" },
-          "operations": { "type": "array", "items": { "type": "string" } },
-          "inputs": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "type": { "type": "string" }, "required": { "type": "boolean" } } } },
-          "outputs": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "type": { "type": "string" } } } }
-        }
-      },
-      "ProcessResponse": {
-        "type": "object",
-        "description": "GITB processing response",
-        "properties": {
-          "result": { "type": "string", "enum": ["SUCCESS", "FAILURE"], "description": "Whether the operation succeeded" },
-          "output": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Output parameters as string key-value pairs" },
-          "error": { "type": "string", "description": "Error message (only when result is FAILURE)" }
+          "name":            { "type": "string" },
+          "value":           { "type": "string", "description": "Encoded according to `embeddingMethod`." },
+          "embeddingMethod": { "$ref": "#/components/schemas/EmbeddingMethod" },
+          "type":            { "type": "string", "description": "GITB simple type — typically `string`." },
+          "mimeType":        { "type": "string", "description": "Output-only rendering hint; ignored on inputs." },
+          "encoding":        { "type": "string", "default": "UTF-8" },
+          "forContext":      { "type": "boolean", "default": true },
+          "forReport":       { "type": "boolean", "default": true },
+          "item":            { "type": "array", "items": { "$ref": "#/components/schemas/AnyContent" }, "description": "Nested AnyContent items for structured payloads." }
         }
       },
       "EmbeddingMethod": {
         "type": "string",
         "enum": ["STRING", "BASE_64", "URI"],
-        "description": "How the value of an AnyContent item is encoded. STRING = raw text. BASE_64 = base64-encoded bytes. URI = a URL the server fetches (subject to SSRF allowlist)."
+        "description": "How the value of an AnyContent item is encoded."
       },
-      "AnyContent": {
+
+      "Configuration": {
         "type": "object",
-        "description": "GITB AnyContent wrapper for typed payloads carried in TAR context items. Used by the ITB to render values alongside report findings.",
-        "required": ["name", "value", "embeddingMethod"],
+        "description": "Name/value Configuration entry.",
+        "required": ["name", "value"],
         "properties": {
-          "name": { "type": "string", "description": "Logical name of the item, e.g. `content`, `operationOutcome`, `fetchInfo`." },
-          "value": { "type": "string", "description": "The payload, encoded according to `embeddingMethod`." },
-          "embeddingMethod": { "$ref": "#/components/schemas/EmbeddingMethod" },
-          "type": { "type": "string", "description": "GITB simple type — typically `string`.", "default": "string" },
-          "mimeType": { "type": "string", "description": "MIME type of `value`. Used by the test engine to pick a renderer (JSON viewer, XML viewer, …). Set by the service on outputs; ignored on inputs." },
-          "encoding": { "type": "string", "description": "Character encoding of `value` (when textual).", "default": "UTF-8" },
-          "forContext": { "type": "boolean", "description": "Include this item in the report's context (data the report refers to).", "default": true },
-          "forReport": { "type": "boolean", "description": "Show this item in the report itself.", "default": true }
+          "name":  { "type": "string" },
+          "value": { "type": "string" }
         }
       },
-      "LevelType": {
-        "type": "string",
-        "enum": ["ERROR", "WARNING", "INFO"],
-        "description": "Severity level of a TAR report item."
-      },
-      "TestResultType": {
-        "type": "string",
-        "enum": ["SUCCESS", "FAILURE", "WARNING", "UNDEFINED"],
-        "description": "Aggregate validation result. `UNDEFINED` means the engine could not produce a definitive verdict (e.g. parse failure)."
-      },
-      "ValidationCounters": {
+
+      "GetModuleDefinitionResponse": {
         "type": "object",
-        "description": "Aggregate issue counts.",
+        "required": ["module"],
         "properties": {
-          "nrOfErrors": { "type": "integer", "minimum": 0 },
-          "nrOfWarnings": { "type": "integer", "minimum": 0 },
-          "nrOfAssertions": { "type": "integer", "minimum": 0, "description": "Information-level findings." }
-        }
-      },
-      "ValidationOverview": {
-        "type": "object",
-        "description": "Summary metadata for the validation run.",
-        "properties": {
-          "name": { "type": "string", "description": "Human-readable validator name." },
-          "version": { "type": "string", "description": "Validation engine version." },
-          "note": { "type": "string", "description": "Free-form note. Echoes the test session id when supplied via `Gitb-Test-Session-Identifier`." },
-          "profileID": { "type": "string", "description": "Profile (or main profile) the resource was validated against." }
-        }
-      },
-      "ReportItem": {
-        "type": "object",
-        "description": "A single finding in a TAR report.",
-        "required": ["level", "description"],
-        "properties": {
-          "level": { "$ref": "#/components/schemas/LevelType" },
-          "description": { "type": "string", "description": "Human-readable issue text. Mapped from `OperationOutcome.issue.details.text`." },
-          "location": { "type": "string", "description": "Where the issue applies. Either a JSON path (e.g. `Patient.name[0].family`) or, when line-anchored, `content:<line>:<col>` — referring to the AnyContent item named `content` in the report context. The latter form lets the ITB jump to the line in its inline editor." },
-          "type": { "type": "string", "description": "Issue category, mapped from `OperationOutcome.issue.code`." },
-          "value": { "type": "string", "description": "Engine diagnostics, when available." },
-          "assertionID": { "type": "string", "description": "Rule/invariant identifier when the finding is tied to a named rule." }
-        }
-      },
-      "TAR": {
-        "type": "object",
-        "description": "GITB Test Assertion Report. Returned by validation services in place of a flat output map.",
-        "properties": {
-          "id": { "type": "string", "format": "uuid", "description": "Fresh UUID per call (distinct from `sessionId`)." },
-          "date": { "type": "string", "format": "date-time", "description": "Server UTC timestamp." },
-          "result": { "$ref": "#/components/schemas/TestResultType" },
-          "counters": { "$ref": "#/components/schemas/ValidationCounters" },
-          "overview": { "$ref": "#/components/schemas/ValidationOverview" },
-          "items": {
-            "type": "array",
-            "items": { "$ref": "#/components/schemas/ReportItem" },
-            "description": "Per-issue findings."
-          },
-          "context": {
-            "type": "array",
-            "items": { "$ref": "#/components/schemas/AnyContent" },
-            "description": "Context items the report refers to. Always includes an `operationOutcome` AnyContent carrying the raw FHIR OperationOutcome JSON. When `inputs.includeContentInReport` is `true` (default), also includes a `content` AnyContent carrying the validated payload — this enables ITB inline rendering and line-anchored locations of the form `content:<line>:<col>`."
+          "module": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/ValidationModule" },
+              { "$ref": "#/components/schemas/ProcessingModule" }
+            ]
           }
+        }
+      },
+      "Metadata": {
+        "type": "object",
+        "properties": {
+          "name":        { "type": "string" },
+          "version":     { "type": "string" },
+          "description": { "type": "string" }
+        }
+      },
+      "TypedParameter": {
+        "type": "object",
+        "properties": {
+          "name":        { "type": "string" },
+          "type":        { "type": "string" },
+          "use":         { "type": "string", "enum": ["R", "O"], "description": "R = required, O = optional." },
+          "description": { "type": "string" }
+        }
+      },
+      "TypedParameters": {
+        "type": "object",
+        "properties": {
+          "param": { "type": "array", "items": { "$ref": "#/components/schemas/TypedParameter" } }
+        }
+      },
+      "ValidationModule": {
+        "type": "object",
+        "description": "GITB ValidationModule (one operation, fixed name `validate`).",
+        "properties": {
+          "id":        { "type": "string" },
+          "operation": { "type": "string", "enum": ["validate"] },
+          "metadata":  { "$ref": "#/components/schemas/Metadata" },
+          "inputs":    { "$ref": "#/components/schemas/TypedParameters" }
+        }
+      },
+      "ProcessingModule": {
+        "type": "object",
+        "description": "GITB ProcessingModule (one or more named operations).",
+        "properties": {
+          "id":        { "type": "string" },
+          "metadata":  { "$ref": "#/components/schemas/Metadata" },
+          "operation": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name":    { "type": "string" },
+                "inputs":  { "$ref": "#/components/schemas/TypedParameters" },
+                "outputs": { "$ref": "#/components/schemas/TypedParameters" }
+              }
+            }
+          }
+        }
+      },
+
+      "ValidateRequest": {
+        "type": "object",
+        "required": ["input"],
+        "properties": {
+          "sessionId": { "type": "string", "description": "Optional session correlation id." },
+          "config":    { "type": "array", "items": { "$ref": "#/components/schemas/Configuration" }, "description": "Optional Configuration entries." },
+          "input":     { "type": "array", "items": { "$ref": "#/components/schemas/AnyContent" }, "description": "Named inputs as AnyContent items." }
         }
       },
       "ValidationResponse": {
         "type": "object",
-        "description": "Validation service response. `output` is the flat convenience summary (counts and severity) for callers that only need a quick read; `report` carries the full TAR with findings and context.",
+        "required": ["report"],
+        "properties": { "report": { "$ref": "#/components/schemas/TAR" } }
+      },
+
+      "ProcessRequest": {
+        "type": "object",
+        "required": ["input"],
         "properties": {
-          "result": { "$ref": "#/components/schemas/TestResultType" },
-          "output": {
-            "type": "object",
-            "additionalProperties": { "type": "string" },
-            "description": "Flat string map: `errors` (count), `warnings` (count), `severity` (highest seen), `outcome` (raw OperationOutcome JSON). Same data also present in `report.counters` and `report.context`."
-          },
+          "sessionId": { "type": "string" },
+          "operation": { "type": "string", "description": "Operation name from the service's ProcessingModule. Optional when the service has only one operation." },
+          "input":     { "type": "array", "items": { "$ref": "#/components/schemas/AnyContent" } }
+        }
+      },
+      "ProcessResponse": {
+        "type": "object",
+        "properties": {
           "report": { "$ref": "#/components/schemas/TAR" },
-          "error": { "type": "string", "description": "Error message (only when `result` is `FAILURE` due to an infrastructure error, not a validation failure)." }
+          "output": { "type": "array", "items": { "$ref": "#/components/schemas/AnyContent" } }
+        }
+      },
+
+      "BeginTransactionResponse": {
+        "type": "object",
+        "required": ["sessionId"],
+        "properties": { "sessionId": { "type": "string", "format": "uuid" } }
+      },
+
+      "TestResultType": {
+        "type": "string",
+        "enum": ["SUCCESS", "FAILURE", "WARNING", "UNDEFINED"]
+      },
+      "LevelType": {
+        "type": "string",
+        "enum": ["ERROR", "WARNING", "INFO"]
+      },
+      "ValidationCounters": {
+        "type": "object",
+        "properties": {
+          "nrOfErrors":     { "type": "integer", "minimum": 0 },
+          "nrOfWarnings":   { "type": "integer", "minimum": 0 },
+          "nrOfAssertions": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "ValidationOverview": {
+        "type": "object",
+        "properties": {
+          "name":      { "type": "string" },
+          "version":   { "type": "string" },
+          "note":      { "type": "string" },
+          "profileID": { "type": "string" }
+        }
+      },
+      "ReportItem": {
+        "type": "object",
+        "required": ["level", "description"],
+        "properties": {
+          "level":       { "$ref": "#/components/schemas/LevelType" },
+          "description": { "type": "string" },
+          "location":    { "type": "string", "description": "JSON path or `content:<line>:<col>`." },
+          "type":        { "type": "string" },
+          "value":       { "type": "string" },
+          "assertionID": { "type": "string" }
+        }
+      },
+      "TAR": {
+        "type": "object",
+        "description": "GITB Test Assertion Report.",
+        "properties": {
+          "id":       { "type": "string", "format": "uuid" },
+          "date":     { "type": "string", "format": "date-time" },
+          "result":   { "$ref": "#/components/schemas/TestResultType" },
+          "counters": { "$ref": "#/components/schemas/ValidationCounters" },
+          "overview": { "$ref": "#/components/schemas/ValidationOverview" },
+          "items":    { "type": "array", "items": { "$ref": "#/components/schemas/ReportItem" } },
+          "context":  { "type": "array", "items": { "$ref": "#/components/schemas/AnyContent" } }
         }
       }
     }

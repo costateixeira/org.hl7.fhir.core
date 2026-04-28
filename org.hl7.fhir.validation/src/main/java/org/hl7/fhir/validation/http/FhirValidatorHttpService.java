@@ -61,13 +61,17 @@ public class FhirValidatorHttpService {
     server.createContext("/txTest", new TxTestHTTPHandler(this));
     server.createContext("/stop", new StopHTTPHandler(this));
 
-    // GITB-aligned wrappers for ITB integration (see ITB_REST_SPEC.md and gitb-openapi.json).
-    // Each handler exposes GET <prefix>/definition and POST <prefix>/process.
-    server.createContext("/itb/fhir", new GitbFhirHandler(this));
-    server.createContext("/itb/fhirpath", new GitbFhirPathHandler(this));
-    server.createContext("/itb/matchetype", new GitbMatchetypeHandler(this));
-    server.createContext("/itb/testdata", new GitbTestDataHandler(this));
-    server.createContext("/itb/validationResults", new GitbValidationResultsHandler(this));
+    // GITB-faithful REST services for ITB integration (gitb_vs.xsd / gitb_ps.xsd).
+    //   Validation services: GET <prefix>/getModuleDefinition + POST <prefix>/validate
+    //   Processing services: GET <prefix>/getModuleDefinition + POST <prefix>/process
+    //                        + POST <prefix>/beginTransaction + POST <prefix>/endTransaction
+    server.createContext("/itb/fhir",              new GitbFhirHandler(this));               // VS
+    server.createContext("/itb/matchetype",        new GitbMatchetypeHandler(this));         // VS
+    server.createContext("/itb/fhirpathAssertion", new GitbFhirPathAssertionHandler(this));  // VS
+    server.createContext("/itb/fhirpath",          new GitbFhirPathHandler(this));           // PS
+    server.createContext("/itb/testdata",          new GitbTestDataHandler(this));           // PS
+    server.createContext("/itb/validationResults", new GitbValidationResultsHandler(this));  // PS
+    server.createContext("/itb/igmanager",         new GitbIgManagerHandler(this));          // PS
 
     // Start the server
     server.setExecutor(null); // Use default executor
