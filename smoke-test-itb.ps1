@@ -109,8 +109,10 @@ if (-not $SkipBuild) {
 $proc = $null
 if (-not $SkipServer) {
   Write-Host "Starting validator server on port $Port (FHIR $FhirVersion) ..." -ForegroundColor Cyan
+  # CLI signature: validator_cli.jar server <port> [-version <ver>] ...
+  # (port is a positional parameter; allowNetworkAccess is off by default — loopback only)
   $proc = Start-Process -FilePath "java" `
-    -ArgumentList @("-jar", $Jar, "http-api", "-port", $Port, "-version", $FhirVersion) `
+    -ArgumentList @("-jar", $Jar, "server", $Port, "-version", $FhirVersion) `
     -PassThru -WindowStyle Hidden -RedirectStandardOutput "smoke-validator.log" -RedirectStandardError "smoke-validator.err.log"
   Write-Host ("  PID {0}, logs: smoke-validator.log / .err.log" -f $proc.Id)
 
