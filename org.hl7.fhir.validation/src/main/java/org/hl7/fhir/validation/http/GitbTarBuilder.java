@@ -84,8 +84,8 @@ final class GitbTarBuilder {
   /** AnyContent that's available to the test session but suppressed from the rendered report. */
   private static JsonObject hiddenContext(String name, String value, String mimeType) {
     JsonObject ac = GitbServiceHandler.anyContent(name, value, mimeType);
+    ac.remove("forReport");
     ac.add("forReport", false);
-    ac.add("forContext", true);
     return ac;
   }
 

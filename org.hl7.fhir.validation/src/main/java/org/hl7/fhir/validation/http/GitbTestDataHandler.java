@@ -25,9 +25,10 @@ class GitbTestDataHandler extends GitbProcessingServiceHandler {
   @Override
   protected JsonObject buildProcessingModule() {
     JsonObject inputs = typedParameters(
-      new TypedParam("profile",  "string", true,  "Canonical URL of the StructureDefinition to generate against."),
-      new TypedParam("mappings", "string", false, "Optional stringified JSON array of mapping objects."),
-      new TypedParam("data",     "string", false, "Optional stringified JSON array of data rows.")
+      new TypedParam("profile",      "string",  true,  "Canonical URL of the StructureDefinition to generate against."),
+      new TypedParam("mappings",     "string",  false, "Optional stringified JSON array of mapping objects."),
+      new TypedParam("data",         "string",  false, "Optional stringified JSON array of data rows."),
+      new TypedParam("requiredOnly", "boolean", false, "When true, only populate required elements (min > 0). Default false.")
     );
     JsonObject outputs = typedParameters(
       new TypedParam("resource", "binary", true, "Generated FHIR resource as stringified JSON.")
@@ -55,6 +56,7 @@ class GitbTestDataHandler extends GitbProcessingServiceHandler {
     String profileUrl = requireInput(input, "profile");
     String mappingsStr = optionalInput(input, "mappings", null);
     String dataStr = optionalInput(input, "data", null);
+    boolean requiredOnly = "true".equalsIgnoreCase(optionalInput(input, "requiredOnly", "false"));
 
     JsonArray data = parseArrayOrEmpty(dataStr);
     JsonArray mappings = parseArrayOrEmpty(mappingsStr);
@@ -64,7 +66,7 @@ class GitbTestDataHandler extends GitbProcessingServiceHandler {
     byte[] result;
     try {
       result = engine.generateTestData(profileUrl, data,
-        mappings.size() == 0 ? null : mappings, FhirFormat.JSON, asBundle);
+        mappings.size() == 0 ? null : mappings, FhirFormat.JSON, asBundle, requiredOnly);
     } catch (Throwable t) {
       log.warn("GITB test-data generate failed", t);
       throw new RuntimeException("Test data generation failed: " + t.getMessage(), t);

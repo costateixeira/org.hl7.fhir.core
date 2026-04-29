@@ -65,6 +65,7 @@ public class ProfileBasedFactory {
   private PrintStream log;
   private boolean testing;
   private boolean markProfile;
+  private boolean requiredOnly;
   
   private static class LogSet {
     public LogSet(String msg) {
@@ -149,6 +150,10 @@ public class ProfileBasedFactory {
     if (definition.types().size() == 1) {
       for (PEDefinition pe : definition.directChildren(true)) {
         if (pe.max() > 0 && (!isIgnoredElement(pe.definition().getBase().getPath()) || pe.hasFixedValue())) {
+          if (requiredOnly && pe.min() == 0 && !pe.hasFixedValue()
+              && (values == null || !values.containsKey(pe.schemaName()))) {
+            continue;
+          }
           populateElement(element, pe, level, path, values);
         }
       }
@@ -231,8 +236,15 @@ public class ProfileBasedFactory {
           }
         }
         if (values == null || val != null || pe.min() > 0) {
-          if (val == null && data != null) { 
+          if (val == null && data != null) {
             val = getPrimitiveValue(ls, b.fhirType(), path, pe.path(), pe.definition().getId(), pe.definition().getPath());
+          }
+          if (val != null && "base64Binary".equals(b.fhirType())) {
+            try {
+              java.util.Base64.getDecoder().decode(val);
+            } catch (IllegalArgumentException e) {
+              val = null; // discard invalid Base64 from the database; the fallback below will generate a valid value
+            }
           }
           if (val == null && pe.valueSet() != null) {
             ValueSetExpansionContainsComponent cc = doExpansion(ls, pe.valueSet());
@@ -636,6 +648,12 @@ public class ProfileBasedFactory {
   public void setMarkProfile(boolean markProfile) {
     this.markProfile = markProfile;
   }
-  
-  
+
+  public boolean isRequiredOnly() {
+    return requiredOnly;
+  }
+
+  public void setRequiredOnly(boolean requiredOnly) {
+    this.requiredOnly = requiredOnly;
+  }
 }
