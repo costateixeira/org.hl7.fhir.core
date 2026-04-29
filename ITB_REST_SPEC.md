@@ -276,7 +276,14 @@ Response is a `ProcessResponse`:
 
 **Path**: `/itb/fhirpath` — Operation: `evaluate`.
 
-Inputs: `content`, `expression`. (The processor currently assumes `content` is JSON. If callers ever need to evaluate over an XML resource we'd add an explicit `contentType` input mirroring §3.1; not done today.) Output: `result` (the evaluated value as a string; collections are JSON-array-encoded; Booleans `true`/`false`).
+Inputs: `content`, `expression`. Output: `result` (the evaluated value as a string; collections are JSON-array-encoded; Booleans `true`/`false`).
+
+> **`contentType` for processing services.** FHIR resources may be serialised in any of three formats:
+> - JSON — `application/fhir+json`
+> - XML  — `application/fhir+xml`
+> - Turtle (RDF) — `text/turtle`
+>
+> `FHIRPathProcessor` currently assumes `content` is JSON. If callers need to evaluate over an XML or Turtle resource we'd add an explicit `contentType` input on `evaluate` mirroring `FHIRValidator.validate` (§3.1). The same applies to other processing services that accept FHIR content (e.g. `MatchetypeProcessor` if added back as a processing service, `ValidationResultsProcessor` whose `outcome` input is also FHIR JSON today). Not implemented yet — track as a known gap if your tests need it.
 
 For pass/fail assertions, use `FHIRPathAssertion` (§3.3).
 
