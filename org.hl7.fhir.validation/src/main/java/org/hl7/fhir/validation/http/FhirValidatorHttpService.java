@@ -67,11 +67,11 @@ public class FhirValidatorHttpService {
     //                        + POST <prefix>/beginTransaction + POST <prefix>/endTransaction
     server.createContext("/itb/fhir",              new GitbFhirHandler(this));               // VS
     server.createContext("/itb/matchetype",        new GitbMatchetypeHandler(this));         // VS
-    server.createContext("/itb/fhirpathAssertion", new GitbFhirPathAssertionHandler(this));  // VS
-    server.createContext("/itb/fhirpath",          new GitbFhirPathHandler(this));           // PS
+    server.createContext("/itb/fhirPathAssertion", new GitbFhirPathAssertionHandler(this));  // VS
+    server.createContext("/itb/fhirPath",          new GitbFhirPathHandler(this));           // PS
     server.createContext("/itb/testdata",          new GitbTestDataHandler(this));           // PS
     server.createContext("/itb/validationResults", new GitbValidationResultsHandler(this));  // PS
-    server.createContext("/itb/igmanager",         new GitbIgManagerHandler(this));          // PS
+    server.createContext("/itb/igManager",         new GitbIgManagerHandler(this));          // PS
 
     // Start the server
     server.setExecutor(null); // Use default executor

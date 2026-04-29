@@ -132,7 +132,7 @@ try {
   Write-Host ""
   Write-Host "Service definitions" -ForegroundColor Cyan
 
-  foreach ($svc in @("fhir","matchetype","fhirpathAssertion","fhirpath","testdata","validationResults","igmanager")) {
+  foreach ($svc in @("fhir","matchetype","fhirPathAssertion","fhirPath","testdata","validationResults","igManager")) {
     Step "$svc /getModuleDefinition" {
       $r = GetJson "/itb/$svc/getModuleDefinition"
       Assert ($null -ne $r.module) "no module in response"
@@ -163,7 +163,7 @@ try {
         @{ name = "expression";        value = "Patient.name.family.exists()"; embeddingMethod = "STRING" }
       )
     } | ConvertTo-Json -Depth 10 -Compress
-    $r = PostJson "/itb/fhirpathAssertion/validate" $body
+    $r = PostJson "/itb/fhirPathAssertion/validate" $body
     Assert ($r.report.result -eq "SUCCESS") ("expected SUCCESS, got " + $r.report.result)
   }
 
@@ -174,7 +174,7 @@ try {
         @{ name = "expression";        value = "Patient.id = 'definitely-not-there'"; embeddingMethod = "STRING" }
       )
     } | ConvertTo-Json -Depth 10 -Compress
-    $r = PostJson "/itb/fhirpathAssertion/validate" $body
+    $r = PostJson "/itb/fhirPathAssertion/validate" $body
     Assert ($r.report.result -eq "FAILURE") ("expected FAILURE, got " + $r.report.result)
   }
 
@@ -189,7 +189,7 @@ try {
         @{ name = "expression"; value = "Patient.name.family"; embeddingMethod = "STRING" }
       )
     } | ConvertTo-Json -Depth 10 -Compress
-    $r = PostJson "/itb/fhirpath/process" $body
+    $r = PostJson "/itb/fhirPath/process" $body
     Assert ($r.output -and $r.output.Count -gt 0) "no output"
     $resultEntry = $r.output | Where-Object { $_.name -eq "result" } | Select-Object -First 1
     Assert ($null -ne $resultEntry) "no 'result' AnyContent in output"
@@ -218,12 +218,12 @@ try {
   Write-Host "Lifecycle" -ForegroundColor Cyan
 
   Step "FHIRPathProcessor beginTransaction" {
-    $r = Invoke-RestMethod -Method Post -Uri "$BaseUrl/itb/fhirpath/beginTransaction" -ContentType "application/json" -Body "{}"
+    $r = Invoke-RestMethod -Method Post -Uri "$BaseUrl/itb/fhirPath/beginTransaction" -ContentType "application/json" -Body "{}"
     Assert ($r.sessionId) "no sessionId"
   }
 
   Step "FHIRPathProcessor endTransaction (204)" {
-    $r = Invoke-WebRequest -Method Post -Uri "$BaseUrl/itb/fhirpath/endTransaction" -ContentType "application/json" -Body "{}" -UseBasicParsing
+    $r = Invoke-WebRequest -Method Post -Uri "$BaseUrl/itb/fhirPath/endTransaction" -ContentType "application/json" -Body "{}" -UseBasicParsing
     Assert ($r.StatusCode -eq 204) ("expected 204, got " + $r.StatusCode)
   }
 
@@ -235,7 +235,7 @@ try {
         operation = "loadIG"
         input = @( @{ name = "ig"; value = "hl7.fhir.be.core#2.1.2"; embeddingMethod = "STRING" } )
       } | ConvertTo-Json -Depth 10 -Compress
-      $r = PostJson "/itb/igmanager/process" $body
+      $r = PostJson "/itb/igManager/process" $body
       $loaded = ($r.output | Where-Object { $_.name -eq "loaded" }).value
       Assert ($loaded -like "hl7.fhir.be.core*") ("loaded: " + $loaded)
     }

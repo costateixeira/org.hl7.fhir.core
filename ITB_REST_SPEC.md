@@ -15,11 +15,11 @@ The validator exposes **seven GITB REST services** under `/itb/`:
 |---|---|---|---|
 | `FHIRValidator`           | Validation | `/itb/fhir`              | `validate` |
 | `MatchetypeValidator`     | Validation | `/itb/matchetype`        | `validate` |
-| `FHIRPathAssertion`       | Validation | `/itb/fhirpathAssertion` | `validate` |
-| `FHIRPathProcessor`       | Processing | `/itb/fhirpath`          | `evaluate` |
+| `FHIRPathAssertion`       | Validation | `/itb/fhirPathAssertion` | `validate` |
+| `FHIRPathProcessor`       | Processing | `/itb/fhirPath`          | `evaluate` |
 | `TestDataGenerator`       | Processing | `/itb/testdata`          | `generate`, `generateBundle` |
 | `ValidationResultsProcessor` | Processing | `/itb/validationResults` | `summarize`, `filterBySeverity`, `filterByText` |
-| `IGManager`               | Processing | `/itb/igmanager`         | `loadIG` |
+| `IGManager`               | Processing | `/itb/igManager`         | `loadIG` |
 
 Per the GITB contract, each kind has a fixed sub-path scheme — the **handler URI is the service root**, and ITB knows the operation names from the contract:
 
@@ -218,7 +218,7 @@ Returns a TAR; mismatches produce `result: FAILURE` with one item per mismatchin
 
 ### 3.3 `FHIRPathAssertion`
 
-**Path**: `/itb/fhirpathAssertion` — Operation: `validate`.
+**Path**: `/itb/fhirPathAssertion` — Operation: `validate`.
 
 Asserts that a FHIRPath expression evaluates to a singleton Boolean `true`.
 
@@ -274,7 +274,7 @@ Response is a `ProcessResponse`:
 
 ### 4.1 `FHIRPathProcessor`
 
-**Path**: `/itb/fhirpath` — Operation: `evaluate`.
+**Path**: `/itb/fhirPath` — Operation: `evaluate`.
 
 Inputs: `content`, `expression`. Output: `result` (the evaluated value as a string; collections are JSON-array-encoded; Booleans `true`/`false`).
 
@@ -313,7 +313,7 @@ Pure JSON utility — does not call the validation engine.
 
 ### 4.4 `IGManager`
 
-**Path**: `/itb/igmanager` — Operation: `loadIG`. Idempotent — re-loading is a no-op.
+**Path**: `/itb/igManager` — Operation: `loadIG`. Idempotent — re-loading is a no-op.
 
 | Input | Required | Notes |
 |---|---|---|

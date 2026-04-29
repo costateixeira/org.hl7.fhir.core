@@ -61,45 +61,45 @@
       }
     },
 
-    "/fhirpathAssertion/getModuleDefinition": {
+    "/fhirPathAssertion/getModuleDefinition": {
       "get": {
         "tags": ["FHIRPathAssertion"],
         "summary": "FHIRPathAssertion service definition",
-        "operationId": "fhirpathAssertionGetModuleDefinition",
+        "operationId": "fhirPathAssertionGetModuleDefinition",
         "responses": { "200": { "description": "Module definition", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GetModuleDefinitionResponse" } } } } }
       }
     },
-    "/fhirpathAssertion/validate": {
+    "/fhirPathAssertion/validate": {
       "post": {
         "tags": ["FHIRPathAssertion"],
         "summary": "Assert that a FHIRPath expression evaluates to true",
-        "operationId": "fhirpathAssertionValidate",
+        "operationId": "fhirPathAssertionValidate",
         "description": "Inputs (in `input[]`): `contentToValidate` (the resource), `expression` (the FHIRPath expression — should yield singleton Boolean), optional `description`.",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ValidateRequest" } } } },
         "responses": { "200": { "description": "Assertion result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ValidationResponse" } } } } }
       }
     },
 
-    "/fhirpath/getModuleDefinition": {
+    "/fhirPath/getModuleDefinition": {
       "get": {
         "tags": ["FHIRPathProcessor"],
         "summary": "FHIRPathProcessor service definition",
-        "operationId": "fhirpathGetModuleDefinition",
+        "operationId": "fhirPathGetModuleDefinition",
         "responses": { "200": { "description": "Module definition", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GetModuleDefinitionResponse" } } } } }
       }
     },
-    "/fhirpath/process": {
+    "/fhirPath/process": {
       "post": {
         "tags": ["FHIRPathProcessor"],
         "summary": "Evaluate a FHIRPath expression",
-        "operationId": "fhirpathProcess",
+        "operationId": "fhirPathProcess",
         "description": "Operation: `evaluate`. Inputs (in `input[]`): `content`, `expression`. Output: `result` (stringified value).",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProcessRequest" } } } },
         "responses": { "200": { "description": "Result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProcessResponse" } } } } }
       }
     },
-    "/fhirpath/beginTransaction": { "post": { "tags": ["FHIRPathProcessor"], "summary": "Begin a (no-op) transaction", "operationId": "fhirpathBegin", "responses": { "200": { "description": "Session id", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BeginTransactionResponse" } } } } } } },
-    "/fhirpath/endTransaction":   { "post": { "tags": ["FHIRPathProcessor"], "summary": "End a (no-op) transaction",   "operationId": "fhirpathEnd",   "responses": { "204": { "description": "No content" } } } },
+    "/fhirPath/beginTransaction": { "post": { "tags": ["FHIRPathProcessor"], "summary": "Begin a (no-op) transaction", "operationId": "fhirPathBegin", "responses": { "200": { "description": "Session id", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BeginTransactionResponse" } } } } } } },
+    "/fhirPath/endTransaction":   { "post": { "tags": ["FHIRPathProcessor"], "summary": "End a (no-op) transaction",   "operationId": "fhirPathEnd",   "responses": { "204": { "description": "No content" } } } },
 
     "/testdata/getModuleDefinition": {
       "get": {
@@ -143,26 +143,26 @@
     "/validationResults/beginTransaction": { "post": { "tags": ["ValidationResultsProcessor"], "summary": "Begin a (no-op) transaction", "operationId": "validationResultsBegin", "responses": { "200": { "description": "Session id", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BeginTransactionResponse" } } } } } } },
     "/validationResults/endTransaction":   { "post": { "tags": ["ValidationResultsProcessor"], "summary": "End a (no-op) transaction",   "operationId": "validationResultsEnd",   "responses": { "204": { "description": "No content" } } } },
 
-    "/igmanager/getModuleDefinition": {
+    "/igManager/getModuleDefinition": {
       "get": {
         "tags": ["IGManager"],
         "summary": "IGManager service definition",
-        "operationId": "igmanagerGetModuleDefinition",
+        "operationId": "igManagerGetModuleDefinition",
         "responses": { "200": { "description": "Module definition", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GetModuleDefinitionResponse" } } } } }
       }
     },
-    "/igmanager/process": {
+    "/igManager/process": {
       "post": {
         "tags": ["IGManager"],
         "summary": "Load a FHIR Implementation Guide package",
-        "operationId": "igmanagerProcess",
+        "operationId": "igManagerProcess",
         "description": "Operation: `loadIG`. Idempotent — re-loading an already-loaded package is a no-op. Input (in `input[]`): `ig` (e.g. `hl7.fhir.be.core#2.1.2`). Output: `loaded` (the resolved `package#version`).",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProcessRequest" } } } },
         "responses": { "200": { "description": "Result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProcessResponse" } } } } }
       }
     },
-    "/igmanager/beginTransaction": { "post": { "tags": ["IGManager"], "summary": "Begin a (no-op) transaction", "operationId": "igmanagerBegin", "responses": { "200": { "description": "Session id", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BeginTransactionResponse" } } } } } } },
-    "/igmanager/endTransaction":   { "post": { "tags": ["IGManager"], "summary": "End a (no-op) transaction",   "operationId": "igmanagerEnd",   "responses": { "204": { "description": "No content" } } } }
+    "/igManager/beginTransaction": { "post": { "tags": ["IGManager"], "summary": "Begin a (no-op) transaction", "operationId": "igManagerBegin", "responses": { "200": { "description": "Session id", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BeginTransactionResponse" } } } } } } },
+    "/igManager/endTransaction":   { "post": { "tags": ["IGManager"], "summary": "End a (no-op) transaction",   "operationId": "igManagerEnd",   "responses": { "204": { "description": "No content" } } } }
   },
 
   "components": {

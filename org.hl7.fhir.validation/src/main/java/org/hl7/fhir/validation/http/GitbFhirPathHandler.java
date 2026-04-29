@@ -9,7 +9,7 @@ import org.hl7.fhir.validation.ValidationEngine;
 import java.nio.charset.StandardCharsets;
 
 /**
- * GITB Processing Service for FHIRPath evaluation at {@code /itb/fhirpath}.
+ * GITB Processing Service for FHIRPath evaluation at {@code /itb/fhirPath}.
  * Single operation: {@code evaluate}. Boolean assertion semantics are exposed
  * separately as the {@link GitbFhirPathAssertionHandler} validation service.
  */
@@ -17,7 +17,7 @@ import java.nio.charset.StandardCharsets;
 class GitbFhirPathHandler extends GitbProcessingServiceHandler {
 
   GitbFhirPathHandler(FhirValidatorHttpService service) {
-    super(service, "/itb/fhirpath");
+    super(service, "/itb/fhirPath");
   }
 
   @Override

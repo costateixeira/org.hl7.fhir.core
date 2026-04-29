@@ -6,7 +6,7 @@ import org.hl7.fhir.utilities.json.model.JsonObject;
 import org.hl7.fhir.validation.ValidationEngine;
 
 /**
- * GITB Processing Service for IG management at {@code /itb/igmanager}.
+ * GITB Processing Service for IG management at {@code /itb/igManager}.
  * Operations: {@code loadIG} (idempotent: re-loading an already-loaded package
  * is a no-op).
  */
@@ -14,7 +14,7 @@ import org.hl7.fhir.validation.ValidationEngine;
 class GitbIgManagerHandler extends GitbProcessingServiceHandler {
 
   GitbIgManagerHandler(FhirValidatorHttpService service) {
-    super(service, "/itb/igmanager");
+    super(service, "/itb/igManager");
   }
 
   @Override

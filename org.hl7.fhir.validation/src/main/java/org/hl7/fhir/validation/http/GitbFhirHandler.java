@@ -21,7 +21,7 @@ import java.util.ArrayList;
  * Single operation per the GITB validation service contract: {@code validate}.
  * <p>
  * IG loading is handled by the separate {@link GitbIgManagerHandler} processing
- * service ({@code /itb/igmanager}); pre-load IGs there before calling validate.
+ * service ({@code /itb/igManager}); pre-load IGs there before calling validate.
  */
 @Slf4j
 class GitbFhirHandler extends GitbValidationServiceHandler {

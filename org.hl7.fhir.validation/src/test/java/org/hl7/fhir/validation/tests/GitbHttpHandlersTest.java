@@ -60,7 +60,7 @@ class GitbHttpHandlersTest {
   // ------------------------------------------------------------------
 
   @ParameterizedTest
-  @ValueSource(strings = {"fhir", "matchetype", "fhirpathAssertion", "fhirpath", "testdata", "validationResults", "igmanager"})
+  @ValueSource(strings = {"fhir", "matchetype", "fhirPathAssertion", "fhirPath", "testdata", "validationResults", "igManager"})
   void getModuleDefinitionReturnsModule(String svc) throws Exception {
     HttpResponse<String> response = get("/itb/" + svc + "/getModuleDefinition");
     assertEquals(200, response.statusCode(), "for /itb/" + svc + "/getModuleDefinition");
@@ -80,8 +80,8 @@ class GitbHttpHandlersTest {
   }
 
   @Test
-  void fhirpathModuleIsProcessingServiceWithEvaluateOperation() throws Exception {
-    JsonObject body = JsonParser.parseObject(get("/itb/fhirpath/getModuleDefinition").body());
+  void fhirPathModuleIsProcessingServiceWithEvaluateOperation() throws Exception {
+    JsonObject body = JsonParser.parseObject(get("/itb/fhirPath/getModuleDefinition").body());
     JsonObject module = body.getJsonObject("module");
     assertEquals("FHIRPathProcessor", module.asString("id"));
     JsonArray ops = module.getJsonArray("operation");
@@ -91,7 +91,7 @@ class GitbHttpHandlersTest {
 
   @Test
   void igManagerModuleHasLoadIgOperation() throws Exception {
-    JsonObject body = JsonParser.parseObject(get("/itb/igmanager/getModuleDefinition").body());
+    JsonObject body = JsonParser.parseObject(get("/itb/igManager/getModuleDefinition").body());
     JsonObject module = body.getJsonObject("module");
     assertEquals("IGManager", module.asString("id"));
     JsonArray ops = module.getJsonArray("operation");

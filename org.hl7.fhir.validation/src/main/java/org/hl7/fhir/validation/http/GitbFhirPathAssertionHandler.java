@@ -10,7 +10,7 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * GITB Validation Service for FHIRPath boolean assertions at
- * {@code /itb/fhirpathAssertion}. Single operation per the GITB validation
+ * {@code /itb/fhirPathAssertion}. Single operation per the GITB validation
  * service contract: {@code validate}.
  * <p>
  * The expression is expected to evaluate to a singleton Boolean. The TAR
@@ -21,7 +21,7 @@ import java.nio.charset.StandardCharsets;
 class GitbFhirPathAssertionHandler extends GitbValidationServiceHandler {
 
   GitbFhirPathAssertionHandler(FhirValidatorHttpService service) {
-    super(service, "/itb/fhirpathAssertion");
+    super(service, "/itb/fhirPathAssertion");
   }
 
   @Override
