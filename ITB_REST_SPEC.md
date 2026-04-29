@@ -118,7 +118,7 @@ Returns `GetModuleDefinitionResponse = { "module": ValidationModule | Processing
 
 ### 2.8 `OperationOutcome → TAR` mapping (validation services)
 
-Validation services produce a TAR. FHIR `OperationOutcome.issue[]` maps to TAR `items[]`:
+Validation services produce a TAR. (Strictly any service may return one — the ITB will render it — but in this spec only validation services do.) FHIR `OperationOutcome.issue[]` maps to TAR `items[]`:
 
 | OperationOutcome field | TAR field |
 |---|---|
@@ -128,7 +128,7 @@ Validation services produce a TAR. FHIR `OperationOutcome.issue[]` maps to TAR `
 | `issue.details.text` | `items[].description` |
 | `issue.expression[*]` joined `; ` (fallback `issue.location[*]`) | `items[].location` |
 | `issue.code` | `items[].type` |
-| `issue.diagnostics` | `items[].value` |
+| `issue.diagnostics` | `items[].value` *(only when short — `items[].value` is meant to highlight a specific value the rule mentioned. The full diagnostic is always available via the `operationOutcome` context item, so test authors needing more should post-process from there.)* |
 
 TAR `result` derives from counters and the caller's severity threshold (`failOn` in §3.1):
 
@@ -142,7 +142,16 @@ default (failOn = error):
 
 `failOn = warning` flips warnings to FAILURE; `failOn = information` flips any issue to FAILURE.
 
-TAR `context[]` always includes the raw `OperationOutcome` JSON. When `inputs.includeContentInReport` is true (default), it also includes the validated `content` AnyContent — enabling the ITB inline editor and `content:<line>:<col>` location anchors.
+TAR `context[]` is what's available to a test step that uses `output="$ctx"` on `<verify>` — it's how test authors get downstream values out of the validation result. The validator populates it with:
+
+| Context item (AnyContent `name`) | `forReport` | Notes |
+|---|---|---|
+| `errorCount`, `warningCount`, `informationCount` | `false` | Counts as text. Available via `$ctx{errorCount}` etc.; not rendered in the report (counters in `report.counters` are rendered). |
+| `severity` | `false` | Highest issue severity seen (`fatal`/`error`/`warning`/`information`). |
+| `operationOutcome` | `true` | The raw FHIR `OperationOutcome` as JSON. Test authors can post-process this with JSON pointer / JSON path. |
+| `content` *(when `inputs.includeContentInReport` is `true`, the default)* | `true` | The validated payload. Enables the ITB inline editor and `content:<line>:<col>` location anchors. |
+
+So a test author who needs counts for assertions captures the verify's context (`output="$ctx"`) and reads `$ctx{errorCount}`. If they need the full FHIR outcome (e.g. to filter by code), they read `$ctx{operationOutcome}` and run JSON pointer over it. See §5.
 
 ---
 
@@ -163,13 +172,14 @@ Content-Type: application/json
     {
       "name": "contentToValidate",
       "value": "{\"resourceType\":\"Patient\",\"name\":[{\"family\":\"Smith\"}]}",
-      "embeddingMethod": "STRING",
-      "mimeType": "application/fhir+json"
+      "embeddingMethod": "STRING"
     },
     { "name": "profiles", "value": "http://hl7.org/fhir/StructureDefinition/Patient", "embeddingMethod": "STRING" }
   ]
 }
 ```
+
+> **`mimeType` on inputs.** The ITB does not propagate `mimeType` on input AnyContent items — it's an output-only rendering hint. To declare the format of `contentToValidate` use the explicit `contentType` input below.
 
 Response is a `ValidationResponse`:
 
@@ -266,7 +276,7 @@ Response is a `ProcessResponse`:
 
 **Path**: `/itb/fhirpath` — Operation: `evaluate`.
 
-Inputs: `content`, `expression`. Output: `result` (the evaluated value as a string; collections are JSON-array-encoded; Booleans `true`/`false`).
+Inputs: `content`, `expression`. (The processor currently assumes `content` is JSON. If callers ever need to evaluate over an XML resource we'd add an explicit `contentType` input mirroring §3.1; not done today.) Output: `result` (the evaluated value as a string; collections are JSON-array-encoded; Booleans `true`/`false`).
 
 For pass/fail assertions, use `FHIRPathAssertion` (§3.3).
 
@@ -310,7 +320,13 @@ A future `listIGs` operation (returning a nested AnyContent list of `{package, v
 
 ## 5. A typical test case
 
-End-to-end flow through the ITB test engine. All handlers use `handlerApiType="REST"`. The handler URI is the service root.
+End-to-end flow through the ITB test engine. All handlers use `handlerApiType="REST"`. The handler URI is the service root (the ITB appends operation names per the GITB contract).
+
+> **How outputs are captured.** A test-engine step publishes what it produced to the test-session state via the `output` *attribute* on the step element (not via a child `<output>` element). For:
+> - `<process ... output="$myResult">` — `$myResult` receives the operation's `output[]` AnyContent items.
+> - `<verify ... output="$ctx">` — `$ctx` receives the **TAR `context[]`** (not the whole TAR). Anything the test author wants to read afterwards must therefore be in the TAR context — that's why the validator publishes counts and the OperationOutcome there (§2.8). The TAR's `report.items[]` and `report.counters` are still rendered in the test report; they're just not in the captured session value.
+>
+> If you do not bind `output`, the step still passes/fails the test but its data is not retained for later steps.
 
 ```xml
 <!-- 1) Load the IG -->
@@ -318,57 +334,51 @@ End-to-end flow through the ITB test engine. All handlers use `handlerApiType="R
   <input name="ig">'hl7.fhir.be.core#2.1.2'</input>
 </process>
 
-<!-- 2) Generate test data -->
-<process handler="$DOMAIN{TestDataGenerator}" handlerApiType="REST" operation="generate">
+<!-- 2) Generate test data — the operation's output[] is captured into $generated -->
+<process handler="$DOMAIN{TestDataGenerator}" handlerApiType="REST" operation="generate" output="$generated">
   <input name="profile">'http://hl7.org/fhir/StructureDefinition/Patient'</input>
-  <output name="resource">$generated</output>
 </process>
 
-<!-- 3) Validate against the IG -->
-<verify handler="$DOMAIN{FHIRValidator}" handlerApiType="REST" output="$report">
-  <input name="contentToValidate">$generated</input>
+<!-- 3) Validate against the IG. The verify's output captures the TAR context — see §2.8. -->
+<verify handler="$DOMAIN{FHIRValidator}" handlerApiType="REST" output="$ctx">
+  <input name="contentToValidate">$generated/resource</input>
   <input name="profiles">'http://hl7.fhir.be.core/StructureDefinition/be-patient'</input>
   <input name="failOn">'warning'</input>
 </verify>
 
-<!-- 4) Pull counters and items out of the TAR -->
-<assign to="$errorCount">$report/counters/nrOfErrors</assign>
-<foreach counter="$i" start="0" end="$report/items/size() - 1">
-  <log>[$report/items[$i]/level] $report/items[$i]/description at $report/items[$i]/location</log>
-</foreach>
+<!-- 4) Counts are in the captured TAR context (validator publishes them with forReport=false) -->
+<assign to="$errorCount">$ctx{errorCount}</assign>
+<assign to="$warningCount">$ctx{warningCount}</assign>
 
-<!-- 5) Reach into report context for the validated payload or raw OperationOutcome -->
-<assign to="$payload">$report/context[name='content']/value</assign>
-<assign to="$outcomeJson">$report/context[name='operationOutcome']/value</assign>
+<!-- 5) The original FHIR OperationOutcome is also in context — post-process with JSON pointer / JSON path -->
+<assign to="$outcomeJson">$ctx{operationOutcome}</assign>
 
-<!-- 6) Post-process the OperationOutcome -->
-<process handler="$DOMAIN{ValidationResultsProcessor}" handlerApiType="REST" operation="filterByText">
+<!-- 6) Or hand the OperationOutcome to ValidationResultsProcessor; bind output via attribute -->
+<process handler="$DOMAIN{ValidationResultsProcessor}" handlerApiType="REST" operation="filterByText" output="$filterResult">
   <input name="outcome">$outcomeJson</input>
   <input name="text">'identifier'</input>
-  <output name="count">$identifierIssueCount</output>
 </process>
+<assign to="$identifierIssueCount">$filterResult/count</assign>
 
-<!-- 7) Boolean assertion -->
+<!-- 7) Boolean assertion via FHIRPathAssertion (a validation service: TAR-emitting). -->
 <verify handler="$DOMAIN{FHIRPathAssertion}" handlerApiType="REST">
-  <input name="contentToValidate">$generated</input>
+  <input name="contentToValidate">$generated/resource</input>
   <input name="expression">'Patient.name.given.count() > 0'</input>
 </verify>
 ```
 
-Everything needed for downstream parsing is preserved on every validation call regardless of `failOn`:
+What the test author can read after a validation step (when `<verify ... output="$ctx">` is bound):
 
-| What you want | Where it is |
-|---|---|
-| Count of errors | `$report/counters/nrOfErrors` |
-| Count of warnings | `$report/counters/nrOfWarnings` |
-| Count of informational issues | `$report/counters/nrOfAssertions` |
-| Each issue's severity | `$report/items[n]/level` (`ERROR`/`WARNING`/`INFO`) |
-| Each issue's message | `$report/items[n]/description` |
-| Each issue's location | `$report/items[n]/location` (JSON path or `content:<line>:<col>`) |
-| Each issue's type code | `$report/items[n]/type` |
-| Each issue's rule id | `$report/items[n]/assertionID` |
-| The validated payload | `$report/context[name='content']/value` |
-| The original OperationOutcome | `$report/context[name='operationOutcome']/value` |
+| Need | TAR context name | Notes |
+|---|---|---|
+| Count of errors | `$ctx{errorCount}` | published with `forReport=false` (not in the rendered report) |
+| Count of warnings | `$ctx{warningCount}` | same |
+| Count of info issues | `$ctx{informationCount}` | same |
+| Highest severity | `$ctx{severity}` | `fatal`/`error`/`warning`/`information` |
+| The original FHIR `OperationOutcome` | `$ctx{operationOutcome}` | FHIR JSON; post-process with JSON pointer / JSON path |
+| The validated payload | `$ctx{content}` | only when `inputs.includeContentInReport` is `true` (the default); use `content:<line>:<col>` locations to drive the ITB inline editor |
+
+Per-issue level/description/location/type/assertionID stay in the rendered TAR `report.items[]` (visible in the ITB report). Test authors who need to drive logic from individual issues should iterate the OperationOutcome with `ValidationResultsProcessor` (or any other JSON-aware processing service).
 
 ---
 

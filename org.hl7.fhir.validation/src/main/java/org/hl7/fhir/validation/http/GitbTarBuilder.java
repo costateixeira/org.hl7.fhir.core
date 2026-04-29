@@ -60,7 +60,15 @@ final class GitbTarBuilder {
     report.add("counters", counters(errors, warnings, infos));
     report.add("items", items);
 
+    // The TAR context is what the ITB stores in test-session state when the caller writes
+    // <verify ... output="$ctx">. Anything callers want to post-process — counts, severity,
+    // the OperationOutcome — has to be put in here as an AnyContent item. forReport=false
+    // hides the item from the rendered report while still making it available to the test.
     JsonArray context = new JsonArray();
+    context.add(hiddenContext("errorCount",       String.valueOf(errors),   "text/plain"));
+    context.add(hiddenContext("warningCount",     String.valueOf(warnings), "text/plain"));
+    context.add(hiddenContext("informationCount", String.valueOf(infos),    "text/plain"));
+    context.add(hiddenContext("severity",         severityCode(highestSeverity(outcome)), "text/plain"));
     if (outcomeJson != null) {
       context.add(GitbServiceHandler.anyContent("operationOutcome", outcomeJson, "application/fhir+json"));
     }
@@ -71,6 +79,38 @@ final class GitbTarBuilder {
     report.add("context", context);
 
     return report;
+  }
+
+  /** AnyContent that's available to the test session but suppressed from the rendered report. */
+  private static JsonObject hiddenContext(String name, String value, String mimeType) {
+    JsonObject ac = GitbServiceHandler.anyContent(name, value, mimeType);
+    ac.add("forReport", false);
+    ac.add("forContext", true);
+    return ac;
+  }
+
+  private static IssueSeverity highestSeverity(OperationOutcome outcome) {
+    IssueSeverity highest = null;
+    for (OperationOutcomeIssueComponent issue : outcome.getIssue()) {
+      IssueSeverity sev = issue.getSeverity();
+      if (sev == null) continue;
+      if (highest == null || sev.ordinal() < highest.ordinal()) {
+        // Lower ordinal = more severe (FATAL=0, ERROR=1, WARNING=2, INFORMATION=3, NULL=4)
+        highest = sev;
+      }
+    }
+    return highest;
+  }
+
+  private static String severityCode(IssueSeverity sev) {
+    if (sev == null) return "information";
+    switch (sev) {
+      case FATAL: return "fatal";
+      case ERROR: return "error";
+      case WARNING: return "warning";
+      case INFORMATION: return "information";
+      default: return "information";
+    }
   }
 
   /** TAR for a non-FHIR pass/fail check (e.g. FHIRPathAssertion or matchetype mismatch). */
@@ -90,7 +130,20 @@ final class GitbTarBuilder {
       items.add(item);
     }
     report.add("items", items);
-    report.add("context", contextItems != null ? contextItems : new JsonArray());
+
+    // Always surface counts and result level in the TAR context so test authors can
+    // capture them via <verify ... output="$ctx"> and post-process.
+    JsonArray context = new JsonArray();
+    context.add(hiddenContext("errorCount",       String.valueOf(errors),   "text/plain"));
+    context.add(hiddenContext("warningCount",     String.valueOf(warnings), "text/plain"));
+    context.add(hiddenContext("informationCount", String.valueOf(infos),    "text/plain"));
+    context.add(hiddenContext("result",           result,                   "text/plain"));
+    if (contextItems != null) {
+      for (org.hl7.fhir.utilities.json.model.JsonElement el : contextItems) {
+        context.add(el);
+      }
+    }
+    report.add("context", context);
     return report;
   }
 
