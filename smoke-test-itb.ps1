@@ -83,30 +83,42 @@ function GetJson($path) {
 # -- 1. build -------------------------------------------------------------
 
 if (-not $SkipBuild) {
-  Write-Host "Building validator_cli ..." -ForegroundColor Cyan
-  # Temporarily relax the error policy: mvn's child Java process emits the
-  # JAVA_TOOL_OPTIONS notice on stderr, which PowerShell otherwise turns
-  # into a terminating error under $ErrorActionPreference = "Stop".
-  $prevPref = $ErrorActionPreference
-  $ErrorActionPreference = "Continue"
-  & mvn.cmd package -DskipTests --projects org.hl7.fhir.validation.cli --also-make --no-transfer-progress -q 2>&1 | ForEach-Object { "$_" }
-  $rc = $LASTEXITCODE
-  $ErrorActionPreference = $prevPref
-  if ($rc -ne 0) { throw "mvn build failed (exit $rc)" }
-  $built = Get-ChildItem "org.hl7.fhir.validation.cli\target\org.hl7.fhir.validation.cli-*-SNAPSHOT.jar" |
-    Where-Object { $_.Name -notlike "*tests*" } |
-    Sort-Object LastWriteTime -Descending | Select-Object -First 1
-  if (-not $built) { throw "No CLI snapshot jar found in org.hl7.fhir.validation.cli\target\" }
-  Copy-Item $built.FullName -Destination $Jar -Force
-  Write-Host ("  Copied {0} -> {1}" -f $built.Name, $Jar)
+  $answer = Read-Host "Build validator_cli before running tests? (Y/N) [N]"
+  if ($answer -match '^[Yy]') {
+    Write-Host "Building validator_cli ..." -ForegroundColor Cyan
+    # Temporarily relax the error policy: mvn's child Java process emits the
+    # JAVA_TOOL_OPTIONS notice on stderr, which PowerShell otherwise turns
+    # into a terminating error under $ErrorActionPreference = "Stop".
+    $prevPref = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    & mvn.cmd package -DskipTests --projects org.hl7.fhir.validation.cli --also-make --no-transfer-progress -q 2>&1 | ForEach-Object { "$_" }
+    $rc = $LASTEXITCODE
+    $ErrorActionPreference = $prevPref
+    if ($rc -ne 0) { throw "mvn build failed (exit $rc)" }
+    $built = Get-ChildItem "org.hl7.fhir.validation.cli\target\org.hl7.fhir.validation.cli-*-SNAPSHOT.jar" |
+      Where-Object { $_.Name -notlike "*tests*" } |
+      Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if (-not $built) { throw "No CLI snapshot jar found in org.hl7.fhir.validation.cli\target\" }
+    Copy-Item $built.FullName -Destination $Jar -Force
+    Write-Host ("  Copied {0} -> {1}" -f $built.Name, $Jar)
+  } else {
+    Write-Host "Skipping build. Using existing $Jar." -ForegroundColor Yellow
+  }
 } else {
   Write-Host "Skipping build (-SkipBuild). Using existing $Jar." -ForegroundColor Yellow
-  if (-not (Test-Path $Jar)) { throw "$Jar not found and -SkipBuild was set." }
 }
+if (-not (Test-Path $Jar)) { throw "$Jar not found. Run again and build first, or use an existing jar." }
 
 # -- 2. start server ------------------------------------------------------
 
 $proc = $null
+if (-not $SkipServer) {
+  $answer = Read-Host "Start a new validator server? (Y/N) [N]"
+  if ($answer -notmatch '^[Yy]') {
+    $SkipServer = $true
+    Write-Host "Using existing server at $BaseUrl." -ForegroundColor Yellow
+  }
+}
 if (-not $SkipServer) {
   Write-Host "Starting validator server on port $Port (FHIR $FhirVersion) ..." -ForegroundColor Cyan
   # CLI signature: validator_cli.jar server <port> [-version <ver>] ...
