@@ -84,8 +84,15 @@ function GetJson($path) {
 
 if (-not $SkipBuild) {
   Write-Host "Building validator_cli ..." -ForegroundColor Cyan
-  & mvn package -DskipTests --projects org.hl7.fhir.validation.cli --also-make --no-transfer-progress -q
-  if ($LASTEXITCODE -ne 0) { throw "mvn build failed (exit $LASTEXITCODE)" }
+  # Temporarily relax the error policy: mvn's child Java process emits the
+  # JAVA_TOOL_OPTIONS notice on stderr, which PowerShell otherwise turns
+  # into a terminating error under $ErrorActionPreference = "Stop".
+  $prevPref = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  & mvn.cmd package -DskipTests --projects org.hl7.fhir.validation.cli --also-make --no-transfer-progress -q 2>&1 | ForEach-Object { "$_" }
+  $rc = $LASTEXITCODE
+  $ErrorActionPreference = $prevPref
+  if ($rc -ne 0) { throw "mvn build failed (exit $rc)" }
   $built = Get-ChildItem "org.hl7.fhir.validation.cli\target\org.hl7.fhir.validation.cli-*-SNAPSHOT.jar" |
     Where-Object { $_.Name -notlike "*tests*" } |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -209,7 +216,7 @@ try {
     Assert ($warns  -eq "1") ("warnings: expected 1, got " + $warns)
   }
 
-  Step "TestDataGenerator getModuleDefinition (smoke only — generate needs a profile)" {
+  Step "TestDataGenerator getModuleDefinition (smoke only - generate needs a profile)" {
     $r = GetJson "/itb/testdata/getModuleDefinition"
     Assert ($r.module.id -eq "TestDataGenerator") "wrong module id"
   }
