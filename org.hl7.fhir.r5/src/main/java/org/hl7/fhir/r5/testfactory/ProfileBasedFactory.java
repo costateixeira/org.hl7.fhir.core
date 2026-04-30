@@ -110,7 +110,7 @@ public class ProfileBasedFactory {
     }
     log("--------------------------------");
     logEntries.clear();
-    
+
     if (markProfile) {
       Element meta = element.forceElement("meta");
       Element prof = meta.forceElement("profile");
@@ -142,22 +142,54 @@ public class ProfileBasedFactory {
     }
     log("--------------------------------");
     logEntries.clear();
-    
+
     return element;
   }
   
   protected void populateByProfile(Element element, PEDefinition definition, int level, String path, Map<String, String> values) throws SQLException, IOException {
     if (definition.types().size() == 1) {
+      boolean generatedAny = false;
+      PEDefinition firstOptional = null;
       for (PEDefinition pe : definition.directChildren(true)) {
         if (pe.max() > 0 && (!isIgnoredElement(pe.definition().getBase().getPath()) || pe.hasFixedValue())) {
-          if (requiredOnly && pe.min() == 0 && !pe.hasFixedValue()
+          // requiredOnly only filters at the top level; inside required complex elements,
+          // populate normally so they don't end up empty and get removed.
+          if (requiredOnly && level == 0 && pe.min() == 0 && !pe.hasFixedValue() && !hasMappingFor(pe)
               && (values == null || !values.containsKey(pe.schemaName()))) {
+            if (firstOptional == null) firstOptional = pe;
             continue;
           }
           populateElement(element, pe, level, path, values);
+          generatedAny = true;
         }
       }
+      // For nested complex elements (level > 0): if all children are optional and
+      // we generated nothing in requiredOnly mode, we'd produce an empty element that
+      // gets removed. Generate the first optional child so the parent (which IS required)
+      // satisfies its cardinality.
+      if (requiredOnly && level > 0 && !generatedAny && firstOptional != null) {
+        populateElement(element, firstOptional, level, path, values);
+      }
     }
+  }
+
+  private boolean hasMappingFor(PEDefinition pe) {
+    if (mappings == null) return false;
+    String defId = pe.definition().getId();
+    String defPath = pe.definition().getPath();
+    String pePath = pe.path();
+    for (JsonObject entry : mappings.asJsonObjects()) {
+      String p = entry.asString("path");
+      if (p != null) {
+        // Direct match on this element
+        if (p.equals(defId) || p.equals(defPath) || p.equals(pePath)) return true;
+        // Mapping targets a descendant of this element — we need this element to exist
+        if (defPath != null && p.startsWith(defPath + ".")) return true;
+        if (pePath != null && p.startsWith(pePath + ".")) return true;
+        if (defId != null && p.startsWith(defId + ".")) return true;
+      }
+    }
+    return false;
   }
 
   private boolean isIgnoredElement(String path) {
@@ -552,6 +584,11 @@ public class ProfileBasedFactory {
   private String getPrimitiveValue(LogSet ls, String fhirType, String... ids) {
     JsonObject entry = findMatchingEntry(ls, ids);
     if (entry != null) {
+      if (entry.has("value")) {
+        String val = entry.asString("value");
+        ls.others.add("literal value = '"+val+"'");
+        return val;
+      }
       JsonElement expression = entry.get("expression");
       if (expression == null || !expression.isJsonPrimitive() || Utilities.noString(expression.asString())) {
         ls.others.add("Found an entry for "+entry.asString("path")+" but it had no expression");
@@ -560,7 +597,7 @@ public class ProfileBasedFactory {
         return evaluateExpression(ls.others, expression, null);
       }
     }
-    return null;    
+    return null;
   }
   
   public String evaluateExpression(List<String> log, JsonElement expression, String name) {
@@ -608,9 +645,13 @@ public class ProfileBasedFactory {
       } else {
         for (JsonObject src : a.asJsonObjects()) {
           if (!src.has("name")) {
-            throw new FHIRException("Found an entry for "+entry.asString("path")+" but it had no proeprty name");            
-          } 
-          result.put(src.asString("name"), evaluateExpression(ls.others, src.get("expression"), src.asString("name")));
+            throw new FHIRException("Found an entry for "+entry.asString("path")+" but it had no property name");
+          }
+          if (src.has("value")) {
+            result.put(src.asString("name"), src.asString("value"));
+          } else {
+            result.put(src.asString("name"), evaluateExpression(ls.others, src.get("expression"), src.asString("name")));
+          }
         }
       }
     }
