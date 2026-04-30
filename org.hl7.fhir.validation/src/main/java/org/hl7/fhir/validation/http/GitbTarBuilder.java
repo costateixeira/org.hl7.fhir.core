@@ -239,7 +239,7 @@ final class GitbTarBuilder {
 
   /**
    * Compute the TAR {@code result} from issue counts and the caller's {@code failOn} threshold.
-   * Mirrors the table in §3.2 of ITB_REST_SPEC.md.
+   * Mirrors the table in §3.2 of documentation/itb-rest-spec.md.
    */
   static String deriveResult(int errors, int warnings, int infos, String failOn) {
     String threshold = failOn == null || failOn.isEmpty() ? "error" : failOn.toLowerCase();

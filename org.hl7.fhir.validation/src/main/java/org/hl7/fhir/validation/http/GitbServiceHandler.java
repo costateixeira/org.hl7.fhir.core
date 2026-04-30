@@ -123,7 +123,7 @@ abstract class GitbServiceHandler extends BaseHTTPHandler implements HttpHandler
    * Resolve the value of an AnyContent according to its {@code embeddingMethod}.
    * For {@code STRING} (the default), returns the raw string. For {@code BASE_64},
    * decodes to a UTF-8 string. {@code URI} is not yet implemented (would require
-   * the SSRF-hardened fetch policy from §2.4 of ITB_REST_SPEC.md); throws.
+   * the SSRF-hardened fetch policy from §2.4 of documentation/itb-rest-spec.md); throws.
    */
   protected static String resolveValue(JsonObject anyContent) {
     String value = anyContent.asString("value");
