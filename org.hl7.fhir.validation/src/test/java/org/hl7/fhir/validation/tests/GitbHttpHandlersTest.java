@@ -107,6 +107,34 @@ class GitbHttpHandlersTest {
     assertOperations(module, "summarize", "filterBySeverity", "filterByText");
   }
 
+  @Test
+  void testdataModuleListsGenerateGenerateBundleAndModify() throws Exception {
+    JsonObject body = JsonParser.parseObject(get("/itb/testdata/getModuleDefinition").body());
+    JsonObject module = body.getJsonObject("module");
+    assertEquals("TestDataGenerator", module.asString("id"));
+    assertOperations(module, "generate", "generateBundle", "modify");
+
+    // The 'modify' operation must declare its required inputs (resource + operations).
+    JsonArray ops = module.getJsonArray("operation");
+    JsonObject modify = null;
+    for (JsonElement el : ops) {
+      JsonObject o = el.asJsonObject();
+      if ("modify".equals(o.asString("name"))) { modify = o; break; }
+    }
+    assertTrue(modify != null, "modify operation must be present in module definition");
+    JsonArray inputs = modify.getJsonObject("inputs").getJsonArray("param");
+    java.util.Set<String> required = new java.util.HashSet<>();
+    java.util.Set<String> optional = new java.util.HashSet<>();
+    for (JsonElement el : inputs) {
+      JsonObject p = el.asJsonObject();
+      ("R".equals(p.asString("use")) ? required : optional).add(p.asString("name"));
+    }
+    assertTrue(required.contains("resource"),   "modify.resource must be required");
+    assertTrue(required.contains("operations"), "modify.operations must be required");
+    assertTrue(optional.contains("profile"),    "modify.profile must be optional");
+    assertTrue(optional.contains("enforce"),    "modify.enforce must be optional");
+  }
+
   // ------------------------------------------------------------------
   // ValidationResultsProcessor — pure JSON, no engine needed
   // ------------------------------------------------------------------

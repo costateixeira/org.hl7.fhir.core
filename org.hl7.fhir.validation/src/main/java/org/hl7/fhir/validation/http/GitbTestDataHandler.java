@@ -2,6 +2,7 @@ package org.hl7.fhir.validation.http;
 
 import lombok.extern.slf4j.Slf4j;
 import org.hl7.fhir.r5.elementmodel.Manager.FhirFormat;
+import org.hl7.fhir.r5.model.OperationOutcome;
 import org.hl7.fhir.utilities.json.model.JsonArray;
 import org.hl7.fhir.utilities.json.model.JsonElement;
 import org.hl7.fhir.utilities.json.model.JsonObject;
@@ -11,9 +12,14 @@ import org.hl7.fhir.validation.ValidationEngine;
 import java.nio.charset.StandardCharsets;
 
 /**
- * GITB Processing Service for test-data generation at {@code /itb/testdata}.
- * Operations: {@code generate} (single resource), {@code generateBundle}
- * (resource wrapped in a Bundle).
+ * GITB Processing Service for test-data generation and modification at {@code /itb/testdata}.
+ * Operations:
+ * <ul>
+ *   <li>{@code generate}       — synthesise a single resource from a profile + mappings</li>
+ *   <li>{@code generateBundle} — synthesise multiple resources wrapped in a Bundle</li>
+ *   <li>{@code modify}         — apply set/add/remove ops to an existing resource,
+ *                                optionally validating the result against a profile</li>
+ * </ul>
  */
 @Slf4j
 class GitbTestDataHandler extends GitbProcessingServiceHandler {
@@ -24,35 +30,54 @@ class GitbTestDataHandler extends GitbProcessingServiceHandler {
 
   @Override
   protected JsonObject buildProcessingModule() {
-    JsonObject inputs = typedParameters(
+    JsonObject genInputs = typedParameters(
       new TypedParam("profile",      "string",  true,  "Canonical URL of the StructureDefinition to generate against."),
       new TypedParam("mappings",     "string",  false, "Optional stringified JSON array of mapping objects."),
       new TypedParam("data",         "string",  false, "Optional stringified JSON array of data rows."),
       new TypedParam("requiredOnly", "boolean", false, "When true, only populate required elements (min > 0). Default false.")
     );
-    JsonObject outputs = typedParameters(
+    JsonObject genOutputs = typedParameters(
       new TypedParam("resource", "binary", true, "Generated FHIR resource as stringified JSON.")
     );
+
+    JsonObject modifyInputs = typedParameters(
+      new TypedParam("resource",   "binary",  true,  "Existing FHIR resource (stringified JSON) to modify."),
+      new TypedParam("operations", "string",  true,  "Stringified JSON array of {op, path, value|parts} entries (op: set|add|remove)."),
+      new TypedParam("profile",    "string",  false, "Optional canonical URL of a StructureDefinition for post-modification validation."),
+      new TypedParam("enforce",    "boolean", false, "When true (default), validate the modified resource and return an OperationOutcome. When false, skip validation entirely.")
+    );
+    JsonObject modifyOutputs = typedParameters(
+      new TypedParam("resource", "binary", true,  "Modified FHIR resource as stringified JSON."),
+      new TypedParam("outcome",  "binary", false, "OperationOutcome from post-modification validation. Present iff enforce=true.")
+    );
+
     return processingModule(
       "TestDataGenerator",
       metadata("FHIR Test Data Generator", GitbFhirHandler.validatorVersion(service.getValidationEngine()),
-        "Synthesises FHIR resources from a profile, optional mappings, and optional row data."),
-      new ProcessingOperation("generate",       inputs, outputs),
-      new ProcessingOperation("generateBundle", inputs, outputs)
+        "Synthesises and modifies FHIR resources against profiles."),
+      new ProcessingOperation("generate",       genInputs,    genOutputs),
+      new ProcessingOperation("generateBundle", genInputs,    genOutputs),
+      new ProcessingOperation("modify",         modifyInputs, modifyOutputs)
     );
   }
 
   @Override
   protected ProcessResult doProcess(String operation, JsonArray input, String sessionId) throws Exception {
+    if ("modify".equals(operation)) {
+      return doModify(input);
+    }
     boolean asBundle;
     if (operation == null || operation.isEmpty() || "generate".equals(operation)) {
       asBundle = false;
     } else if ("generateBundle".equals(operation)) {
       asBundle = true;
     } else {
-      throw new UnknownOperationException(operation, "generate, generateBundle");
+      throw new UnknownOperationException(operation, "generate, generateBundle, modify");
     }
+    return doGenerate(input, asBundle);
+  }
 
+  private ProcessResult doGenerate(JsonArray input, boolean asBundle) throws Exception {
     String profileUrl = requireInput(input, "profile");
     String mappingsStr = optionalInput(input, "mappings", null);
     String dataStr = optionalInput(input, "data", null);
@@ -74,6 +99,47 @@ class GitbTestDataHandler extends GitbProcessingServiceHandler {
 
     JsonArray output = new JsonArray();
     output.add(anyContent("resource", new String(result, StandardCharsets.UTF_8), "application/fhir+json"));
+    return ProcessResult.ofOutput(output);
+  }
+
+  private ProcessResult doModify(JsonArray input) throws Exception {
+    String resource = requireInput(input, "resource");
+    String operationsStr = requireInput(input, "operations");
+    String profileUrl = optionalInput(input, "profile", null);
+    boolean enforce = optionalBooleanInput(input, "enforce", true);
+
+    JsonArray operations = parseArrayOrEmpty(operationsStr);
+    if (operations.size() == 0) {
+      throw new InvalidInputException("'operations' must be a non-empty JSON array");
+    }
+
+    ValidationEngine engine = service.getValidationEngine();
+    ValidationEngine.ManipulationResult result;
+    try {
+      result = engine.manipulateResource(
+        resource.getBytes(StandardCharsets.UTF_8),
+        FhirFormat.JSON,
+        profileUrl,
+        operations,
+        enforce,
+        FhirFormat.JSON);
+    } catch (Throwable t) {
+      log.warn("GITB test-data modify failed", t);
+      throw new RuntimeException("Modification failed: " + t.getMessage(), t);
+    }
+
+    JsonArray output = new JsonArray();
+    output.add(anyContent("resource", new String(result.getResource(), StandardCharsets.UTF_8), "application/fhir+json"));
+    OperationOutcome outcome = result.getOutcome();
+    if (outcome != null) {
+      String outcomeJson;
+      try {
+        outcomeJson = GitbFhirHandler.serializeOutcome(outcome);
+      } catch (Throwable t) {
+        throw new RuntimeException("Could not serialise OperationOutcome: " + t.getMessage(), t);
+      }
+      output.add(anyContent("outcome", outcomeJson, "application/fhir+json"));
+    }
     return ProcessResult.ofOutput(output);
   }
 
