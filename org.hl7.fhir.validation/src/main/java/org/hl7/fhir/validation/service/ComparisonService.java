@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.hl7.fhir.exceptions.FHIRException;
 import org.hl7.fhir.r5.comparison.ComparisonRenderer;
 import org.hl7.fhir.r5.comparison.ComparisonSession;
+import org.hl7.fhir.r5.comparison.JsonComparisonRenderer;
 import org.hl7.fhir.r5.model.CanonicalResource;
 import org.hl7.fhir.r5.model.CapabilityStatement;
 import org.hl7.fhir.r5.model.Resource;
@@ -66,6 +67,15 @@ public class ComparisonService {
     ComparisonRenderer cr = new ComparisonRenderer(validator.getContext(), validator.getContext(), dest, session);
     cr.loadTemplates(validator.getContext());
     File htmlFile = cr.render(left, right);
+
+    // Always also emit a machine-readable JSON view alongside the HTML.
+    try {
+      String jsonIndex = new JsonComparisonRenderer(session, dest).render();
+      log.info("JSON comparison report: " + jsonIndex);
+    } catch (Exception e) {
+      log.error("Unable to emit JSON comparison report: " + e.getMessage(), e);
+    }
+
     // only try to open in browser if not in headless mode
     if (!GraphicsEnvironment.isHeadless()) {
       try {

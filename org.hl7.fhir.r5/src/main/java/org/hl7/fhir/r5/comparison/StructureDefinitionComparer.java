@@ -86,10 +86,10 @@ public class StructureDefinitionComparer extends CanonicalResourceComparer imple
   }
 
 
-  private class ElementDefinitionNode {
+  public static class ElementDefinitionNode {
     private ElementDefinition def;
     private StructureDefinition src;
-    private ElementDefinitionNode(StructureDefinition src, ElementDefinition def) {
+    public ElementDefinitionNode(StructureDefinition src, ElementDefinition def) {
       super();
       this.src = src;
       this.def = def;
